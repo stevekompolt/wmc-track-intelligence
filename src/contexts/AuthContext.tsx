@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { User, AuthState, LoginCredentials, UserRole, SalesforceAuthResponse } from '@/types/auth';
+import { User, AuthState, LoginCredentials, UserRole } from '@/types/auth';
+import { z } from 'zod';
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
@@ -10,79 +11,161 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AUTH_STORAGE_KEY = 'wmc_auth_session';
+const SFDC_API_BASE = 'https://api.realintelligence.com/api';
+const SFDC_ORG_ID = '00D5e000000HEcP';
 
-// Placeholder for SFDC authentication - to be replaced with actual endpoint
-async function authenticateWithSalesforce(credentials: LoginCredentials): Promise<SalesforceAuthResponse> {
-  // TODO: Replace with actual SFDC endpoint call
-  // This is the structure your existing pattern uses
+// Input validation schema
+const loginSchema = z.object({
+  email: z.string().trim().email('Invalid email format').max(255, 'Email too long'),
+  password: z.string().min(1, 'Password required').max(128, 'Password too long'),
+});
+
+// Parse role from SFDC response - will be expanded when role data is provided
+function parseRoleFromResponse(userData: any): UserRole {
+  // TODO: Update this when role field information is provided
+  // For now, default to wmc_admin for testing
+  const roleField = userData?.role || userData?.Role__c || userData?.user_role || '';
   
-  // Mock implementation for development
-  // In production, this calls your SFDC credential validation endpoint
-  await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-  
-  // Mock users for development - remove when connecting to SFDC
-  const mockUsers: Record<string, { password: string; user: User }> = {
-    'engineer@wmc.racing': {
-      password: 'demo123',
-      user: {
-        id: 'usr_001',
-        email: 'engineer@wmc.racing',
-        name: 'Alex Martinez',
-        role: 'race_engineering',
-        salesforceId: 'sf_001',
-      },
-    },
-    'ops@wmc.racing': {
-      password: 'demo123',
-      user: {
-        id: 'usr_002',
-        email: 'ops@wmc.racing',
-        name: 'Jordan Chen',
-        role: 'race_operations',
-        salesforceId: 'sf_002',
-      },
-    },
-    'media@wmc.racing': {
-      password: 'demo123',
-      user: {
-        id: 'usr_003',
-        email: 'media@wmc.racing',
-        name: 'Sam Williams',
-        role: 'media_broadcast',
-        salesforceId: 'sf_003',
-      },
-    },
-    'admin@wmc.racing': {
-      password: 'demo123',
-      user: {
-        id: 'usr_004',
-        email: 'admin@wmc.racing',
-        name: 'Taylor Rodriguez',
-        role: 'wmc_admin',
-        salesforceId: 'sf_004',
-      },
-    },
+  const roleMap: Record<string, UserRole> = {
+    'race_engineering': 'race_engineering',
+    'Race Engineering': 'race_engineering',
+    'engineering': 'race_engineering',
+    'race_operations': 'race_operations',
+    'Race Operations': 'race_operations',
+    'operations': 'race_operations',
+    'media_broadcast': 'media_broadcast',
+    'Media & Broadcast': 'media_broadcast',
+    'media': 'media_broadcast',
+    'wmc_admin': 'wmc_admin',
+    'WMC Admin': 'wmc_admin',
+    'admin': 'wmc_admin',
   };
 
-  const mockUser = mockUsers[credentials.email.toLowerCase()];
-  
-  if (mockUser && mockUser.password === credentials.password) {
+  return roleMap[roleField] || 'wmc_admin'; // Default to admin for now
+}
+
+// Extract password from XML-style tag in response
+function extractPasswordFromResponse(responseText: string): string | null {
+  const match = responseText.match(/<ripassword>([^<]+)<\/ripassword>/);
+  return match ? match[1] : null;
+}
+
+// Parse user data from response
+function parseUserFromResponse(responseData: any): Partial<User> | null {
+  try {
+    // Handle different response formats
+    if (typeof responseData === 'string') {
+      // Try to parse as JSON if string
+      try {
+        responseData = JSON.parse(responseData);
+      } catch {
+        // Not JSON, might be XML-style
+        return null;
+      }
+    }
+
+    // Extract user fields - adjust based on actual SFDC response structure
+    const id = responseData.Id || responseData.id || responseData.sfdc_id || '';
+    const email = responseData.Email || responseData.email || '';
+    const name = responseData.Name || responseData.name || 
+                 `${responseData.FirstName || ''} ${responseData.LastName || ''}`.trim() || 
+                 email.split('@')[0];
+
+    if (!id && !email) return null;
+
+    return {
+      id,
+      email,
+      name,
+      salesforceId: responseData.Id || responseData.sfdc_id,
+      role: parseRoleFromResponse(responseData),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function authenticateWithSalesforce(credentials: LoginCredentials): Promise<{
+  success: boolean;
+  user?: User;
+  error?: string;
+}> {
+  try {
+    // Validate input
+    const validation = loginSchema.safeParse(credentials);
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || 'Invalid credentials format',
+      };
+    }
+
+    const { email, password } = validation.data;
+
+    // Query SFDC endpoint
+    const url = `${SFDC_API_BASE}/specific-wmc-member-email.py?orgId=${encodeURIComponent(SFDC_ORG_ID)}&email=${encodeURIComponent(email)}&sandbox=False`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return { success: false, error: 'User not found. Please check your email.' };
+      }
+      return { success: false, error: 'Authentication service unavailable. Please try again.' };
+    }
+
+    const responseText = await response.text();
+    
+    // Extract password from response
+    const storedPassword = extractPasswordFromResponse(responseText);
+    
+    if (!storedPassword) {
+      return { success: false, error: 'User not found or account not configured.' };
+    }
+
+    // Validate password
+    if (password !== storedPassword) {
+      return { success: false, error: 'Invalid credentials. Please check your password.' };
+    }
+
+    // Parse user data - try JSON first
+    let userData: any;
+    try {
+      userData = JSON.parse(responseText);
+    } catch {
+      // Try to extract from XML-style response if not JSON
+      userData = { email };
+    }
+
+    const user = parseUserFromResponse(userData);
+    
+    if (!user) {
+      return { success: false, error: 'Unable to process user data.' };
+    }
+
     return {
       success: true,
       user: {
-        id: mockUser.user.id,
-        email: mockUser.user.email,
-        name: mockUser.user.name,
-        role: mockUser.user.role,
-        salesforceId: mockUser.user.salesforceId || '',
+        id: user.id || `usr_${Date.now()}`,
+        email: user.email || email,
+        name: user.name || email.split('@')[0],
+        role: user.role || 'wmc_admin',
+        salesforceId: user.salesforceId,
       },
     };
-  }
 
-  return {
-    success: false,
-    error: 'Invalid credentials. Please check your email and password.',
-  };
+  } catch (error) {
+    console.error('Auth error:', error);
+    return {
+      success: false,
+      error: 'Network error. Please check your connection and try again.',
+    };
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -117,40 +200,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (credentials: LoginCredentials) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
-    try {
-      const response = await authenticateWithSalesforce(credentials);
+    const result = await authenticateWithSalesforce(credentials);
 
-      if (response.success && response.user) {
-        const user: User = {
-          id: response.user.id,
-          email: response.user.email,
-          name: response.user.name,
-          role: response.user.role as UserRole,
-          salesforceId: response.user.salesforceId,
-        };
-
-        sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-        
-        setState({
-          user,
-          isAuthenticated: true,
-          isLoading: false,
-          error: null,
-        });
-      } else {
-        setState({
-          user: null,
-          isAuthenticated: false,
-          isLoading: false,
-          error: response.error || 'Authentication failed',
-        });
-      }
-    } catch (err) {
+    if (result.success && result.user) {
+      sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(result.user));
+      setState({
+        user: result.user,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      });
+    } else {
       setState({
         user: null,
         isAuthenticated: false,
         isLoading: false,
-        error: 'Network error. Please try again.',
+        error: result.error || 'Authentication failed',
       });
     }
   }, []);

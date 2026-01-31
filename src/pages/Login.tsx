@@ -136,17 +136,11 @@ export default function Login() {
               </Button>
             </form>
 
-            {/* Dev mode credentials hint */}
+            {/* SFDC Auth info */}
             <div className="mt-6 pt-4 border-t border-border/50">
-              <p className="text-xs text-muted-foreground text-center font-mono mb-2">
-                DEVELOPMENT MODE
+              <p className="text-xs text-muted-foreground text-center font-mono">
+                SALESFORCE AUTHENTICATION
               </p>
-              <div className="text-xs text-muted-foreground/70 space-y-1 font-mono">
-                <p>engineer@wmc.racing / demo123</p>
-                <p>ops@wmc.racing / demo123</p>
-                <p>media@wmc.racing / demo123</p>
-                <p>admin@wmc.racing / demo123</p>
-              </div>
             </div>
           </CardContent>
         </Card>
