@@ -4,11 +4,18 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1IjoiZ29mYXN0ZXIiLCJhIjoiY204emFjMjJiMDI2czJrcTJiYWVqZmlsbSJ9.GRJpIZBzVU7vyxY7l9wUIQ';
 
+// Default coordinates (Utah area)
+const DEFAULT_CENTER: [number, number] = [-111.9, 40.5];
+const DEFAULT_ZOOM = 14;
+
 interface TrackMapProps {
   trackName?: string;
+  latitude?: number;
+  longitude?: number;
+  zoom?: number;
 }
 
-export function TrackMap({ trackName }: TrackMapProps) {
+export function TrackMap({ trackName, latitude, longitude, zoom }: TrackMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
 
@@ -17,11 +24,16 @@ export function TrackMap({ trackName }: TrackMapProps) {
 
     mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
+    // Use provided coordinates or defaults
+    const initialCenter: [number, number] = 
+      latitude && longitude ? [longitude, latitude] : DEFAULT_CENTER;
+    const initialZoom = zoom || DEFAULT_ZOOM;
+
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/dark-v11',
-      center: [-111.9, 40.5], // Default to Utah area
-      zoom: 14,
+      center: initialCenter,
+      zoom: initialZoom,
       pitch: 45,
       bearing: 0,
     });
@@ -35,13 +47,17 @@ export function TrackMap({ trackName }: TrackMapProps) {
     };
   }, []);
 
-  // Update map title overlay when track changes
+  // Fly to new location when coordinates change
   useEffect(() => {
-    if (map.current && trackName) {
-      // Could geocode track location here in the future
-      console.log('Track selected:', trackName);
+    if (map.current && latitude && longitude) {
+      map.current.flyTo({
+        center: [longitude, latitude],
+        zoom: zoom || DEFAULT_ZOOM,
+        duration: 2000,
+        essential: true,
+      });
     }
-  }, [trackName]);
+  }, [latitude, longitude, zoom]);
 
   return (
     <div className="relative w-full h-full">
