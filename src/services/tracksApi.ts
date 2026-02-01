@@ -2,55 +2,31 @@ import { Track } from '@/types/track';
 
 const TRACKS_API_URL = 'https://api.realintelligence.com/api/specific-property-list.py?orgId=00D5e000000HEcP&sandbox=False';
 
-// Salesforce ID pattern: 18-character alphanumeric starting with 'a0x'
-const SFDC_ID_PATTERN = /a0x[A-Za-z0-9]{15}/g;
+// Pattern to extract name and id from XML-style tags
+const NAME_PATTERN = /<name>([^<]+)<\/name>/gi;
+const ID_PATTERN = /<id>([^<]+)<\/id>/gi;
 
 /**
- * Parse the custom delimited text response from the SFDC property list API
- * Each track record contains a name followed by an 18-character Salesforce ID
+ * Parse the XML-style response from the SFDC property list API
+ * Each track record contains <name> and <id> tags
  */
 function parseTracksResponse(responseText: string): Track[] {
   const tracks: Track[] = [];
   
-  // Split by the Salesforce ID pattern to find records
-  const matches = responseText.matchAll(SFDC_ID_PATTERN);
-  let lastIndex = 0;
+  // Extract all names and IDs
+  const names = [...responseText.matchAll(NAME_PATTERN)].map(m => m[1].trim());
+  const ids = [...responseText.matchAll(ID_PATTERN)].map(m => m[1].trim());
   
-  for (const match of matches) {
-    const id = match[0];
-    const matchIndex = match.index!;
-    
-    // Extract text before this ID (contains the track name)
-    const textBefore = responseText.substring(lastIndex, matchIndex);
-    
-    // Find the track name - look for the last meaningful text segment
-    // Split by common delimiters and find the track name
-    const segments = textBefore.split(/[|,\n\r]+/).filter(s => s.trim());
-    
-    // The track name is typically the first substantial text segment
-    // Look for a segment that looks like a venue name (not boolean/numeric values)
-    let trackName = '';
-    for (const segment of segments) {
-      const trimmed = segment.trim();
-      // Skip boolean values, numbers, and very short strings
-      if (
-        trimmed.length > 3 &&
-        !['true', 'false', 'True', 'False'].includes(trimmed) &&
-        !/^\d+(\.\d+)?$/.test(trimmed)
-      ) {
-        trackName = trimmed;
-        break;
-      }
-    }
-    
-    if (trackName && id) {
+  // Pair them up - assuming they appear in order
+  const count = Math.min(names.length, ids.length);
+  
+  for (let i = 0; i < count; i++) {
+    if (names[i] && ids[i]) {
       tracks.push({
-        id,
-        name: trackName,
+        id: ids[i],
+        name: names[i],
       });
     }
-    
-    lastIndex = matchIndex + id.length;
   }
   
   return tracks;
