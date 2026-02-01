@@ -1,12 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Map, Layers, MousePointer2 } from 'lucide-react';
 import { TrackSelector } from '@/components/editor/TrackSelector';
 import { TrackMap } from '@/components/editor/TrackMap';
 import { Track } from '@/types/track';
+import { useTracks } from '@/hooks/useTracks';
+
+const STORAGE_KEY = 'wmc_last_track_id';
 
 export default function TrackEditor() {
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
+  const { data: tracks } = useTracks();
+  const hasAutoSelected = useRef(false);
+
+  // Auto-select saved track once tracks load
+  useEffect(() => {
+    if (hasAutoSelected.current || !tracks?.length) return;
+    
+    const savedTrackId = localStorage.getItem(STORAGE_KEY);
+    if (savedTrackId) {
+      const savedTrack = tracks.find((t) => t.id === savedTrackId);
+      if (savedTrack) {
+        setSelectedTrack(savedTrack);
+      }
+    }
+    hasAutoSelected.current = true;
+  }, [tracks]);
+
+  // Save selected track to localStorage
+  useEffect(() => {
+    if (selectedTrack) {
+      localStorage.setItem(STORAGE_KEY, selectedTrack.id);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, [selectedTrack]);
 
   return (
     <div className="flex h-full">
