@@ -1,58 +1,97 @@
 
-# Remember Last Viewed Track
+# Shared Track Context Across All Views
 
 ## Overview
-Persist the user's last selected track so it automatically loads when they return to the Track Editor, even after logging out and back in.
+Create a global track context so that when you select a track in Track Editor, it stays selected when you navigate to Media Intelligence, Event Ops, or Fan Preview. Each view shows the same base map with different mode-specific overlays.
 
 ---
 
-## Approach
+## Current State
 
-Use **localStorage** to save the selected track ID. When the Track Editor mounts:
-1. Check localStorage for a saved track ID
-2. Once tracks are loaded from the API, find and select the matching track
-3. Whenever the user selects a different track, update localStorage
-
-Using localStorage (vs sessionStorage) ensures the preference persists across browser sessions and logouts.
+Each page is independent:
+- Track Editor: Has TrackSelector and TrackMap with localStorage persistence
+- Media Intelligence: Placeholder only, no map or track
+- Event Ops: Placeholder only, no map or track
+- Fan Experience: Placeholder only, no map or track
 
 ---
 
-## Implementation
+## Proposed Architecture
 
-### Changes to TrackEditor.tsx
+```text
+                     TrackContext (global)
+                           |
+          +----------------+----------------+
+          |                |                |
+     selectedTrack    setSelectedTrack   tracks[]
+          |
+          v
+    +-----+-----+-----+-----+
+    |     |     |     |     |
+ Editor  Ops  Media  Fan   (all consume same context)
+    |     |     |     |
+    v     v     v     v
+  TrackMap (shared component)
+  + mode-specific overlays
+```
 
-1. **Add storage key constant**: `wmc_last_track_id`
+---
 
-2. **Initialize from localStorage**: On mount, read the saved track ID
+## Implementation Steps
 
-3. **Auto-select saved track**: Once tracks load via `useTracks()`, find and select the matching track
+### 1. Create TrackContext
+**New file: `src/contexts/TrackContext.tsx`**
 
-4. **Save on selection change**: When user selects a new track, save its ID to localStorage
+A React Context that:
+- Holds the currently selected track
+- Auto-loads tracks via useTracks hook
+- Persists selection to localStorage (using existing `wmc_last_track_id` key)
+- Auto-selects saved track on mount
+
+### 2. Wrap App with TrackProvider
+**`src/App.tsx`**
+
+Add `<TrackProvider>` inside the ProtectedRoute so track context is available to all authenticated views.
+
+### 3. Move TrackSelector to AppLayout
+**`src/components/layout/AppLayout.tsx`**
+
+Add the TrackSelector to the top navigation bar (next to the nav items) so it's always visible regardless of which view you're on.
+
+### 4. Update TrackEditor
+**`src/pages/TrackEditor.tsx`**
+
+- Remove local track state and localStorage logic
+- Consume track from TrackContext instead
+- Keep the Feature Toolbox and Feature Inspector panels
+
+### 5. Add TrackMap to Other Views
+**`src/pages/MediaIntelligence.tsx`**
+**`src/pages/EventOps.tsx`**
+**`src/pages/FanExperience.tsx`**
+
+- Replace placeholder cards with the same TrackMap component
+- Each view gets the track from TrackContext
+- Mode-specific panels remain (Cameras panel, Alerts panel, etc.)
 
 ---
 
 ## Technical Details
 
-### Storage Logic
+### TrackContext Interface
 ```text
-On Mount:
-1. Read savedTrackId from localStorage
-
-On Tracks Load:
-2. If savedTrackId exists AND tracks are loaded
-3. Find track where track.id === savedTrackId
-4. If found, call setSelectedTrack(track)
-
-On Track Selection:
-5. Save selectedTrack.id to localStorage
-6. (Or remove from localStorage if null)
+TrackContextType:
+  - selectedTrack: Track | null
+  - setSelectedTrack: (track: Track | null) => void
+  - tracks: Track[]
+  - isLoading: boolean
 ```
 
-### Hook Integration
-The `useTracks()` hook returns `{ data: tracks, isLoading }`. We'll use a `useEffect` to auto-select once:
-- Tracks have loaded
-- We have a saved track ID
-- No track is currently selected (avoid overwriting manual selection)
+### Shared TrackSelector Position
+The track selector moves from the Track Editor's left panel to the top navigation bar, making it globally accessible. When you change tracks from any view, the map updates immediately.
+
+### LocalStorage Persistence
+The existing `wmc_last_track_id` key continues to work, but is now managed by TrackContext instead of TrackEditor directly.
 
 ---
 
@@ -60,13 +99,23 @@ The `useTracks()` hook returns `{ data: tracks, isLoading }`. We'll use a `useEf
 
 | File | Action |
 |------|--------|
-| `src/pages/TrackEditor.tsx` | Add localStorage read/write for track persistence |
+| `src/contexts/TrackContext.tsx` | Create - New context for global track state |
+| `src/App.tsx` | Modify - Add TrackProvider |
+| `src/components/layout/AppLayout.tsx` | Modify - Add TrackSelector to nav bar |
+| `src/pages/TrackEditor.tsx` | Modify - Use context instead of local state |
+| `src/pages/MediaIntelligence.tsx` | Modify - Add TrackMap, consume context |
+| `src/pages/EventOps.tsx` | Modify - Add TrackMap, consume context |
+| `src/pages/FanExperience.tsx` | Modify - Add TrackMap, consume context |
 
 ---
 
 ## User Experience
 
-- User selects "Utah Motorsports Campus"
-- User logs out and closes browser
-- User returns next day, logs in, goes to Track Editor
-- Map automatically loads Utah Motorsports Campus
+1. User logs in, goes to Track Editor
+2. Selects "Utah Motorsports Campus" from the track dropdown in the nav bar
+3. Map loads Utah Motorsports Campus
+4. User clicks "Media Intelligence" in nav
+5. Same map is shown, but now with camera positions and coverage overlays
+6. User clicks "Event Ops"
+7. Same map, now with zone status overlays
+8. Track selection persists across views and sessions
