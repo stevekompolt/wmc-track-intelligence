@@ -47,7 +47,12 @@ export default function TrackEditor() {
         </div>
         <div className="flex-1 bg-background">
           {selectedTrack ? (
-            <TrackMap trackName={selectedTrack.name} />
+            <TrackMap 
+              trackName={selectedTrack.name}
+              latitude={selectedTrack.latitude}
+              longitude={selectedTrack.longitude}
+              zoom={selectedTrack.zoom}
+            />
           ) : (
             <div className="flex-1 h-full flex items-center justify-center">
               <Card className="border-dashed">
