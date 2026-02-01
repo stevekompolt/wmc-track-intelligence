@@ -1,73 +1,71 @@
 
-# Track Coordinate Integration
+# Map Style Switcher
 
 ## Overview
-Update the track parsing and map component to read coordinates from the API and automatically center the map when a track is selected.
+Add a layer/style switcher control to the TrackMap component so users can change between different map types. Currently the map uses `dark-v11` which is very dark - we'll add options for lighter and more varied map styles.
 
 ---
 
-## API Data Format
+## Mapbox Style Options
 
-The coordinates tag format from SFDC:
-```xml
-<coordinates>40.580477,-112.380066,0</coordinates>
-```
+We'll include these commonly used Mapbox styles:
 
-Values:
-- **latitude**: 40.580477
-- **longitude**: -112.380066  
-- **zoom/elevation**: 0 (we can use this as zoom level or ignore if 0)
+| Style | Mapbox URL | Description |
+|-------|------------|-------------|
+| Dark | `mapbox://styles/mapbox/dark-v11` | Current dark theme |
+| Light | `mapbox://styles/mapbox/light-v11` | Light/white theme |
+| Streets | `mapbox://styles/mapbox/streets-v12` | Standard street map |
+| Satellite | `mapbox://styles/mapbox/satellite-v9` | Aerial imagery |
+| Satellite Streets | `mapbox://styles/mapbox/satellite-streets-v12` | Satellite with labels |
+| Outdoors | `mapbox://styles/mapbox/outdoors-v12` | Terrain-focused |
 
 ---
 
-## Implementation Changes
+## UI Design
 
-### 1. Update Track Type
-**`src/types/track.ts`**
+A floating button with a **Layers icon** in the bottom-right corner of the map. Clicking it opens a dropdown menu with the style options. The current selection shows a checkmark.
 
-Add coordinate fields to the Track interface:
-- `latitude?: number`
-- `longitude?: number`
-- `zoom?: number`
+Position: Bottom-right (avoiding conflict with navigation controls in top-right)
 
-### 2. Update API Parser
-**`src/services/tracksApi.ts`**
+---
 
-Add parsing for the coordinates tag:
-- Extract using pattern: `/<coordinates>([^<]+)<\/coordinates>/gi`
-- Split the value by comma to get lat, lng, zoom
-- Pair with corresponding track records
+## Implementation
 
-### 3. Update TrackMap Component
-**`src/components/editor/TrackMap.tsx`**
+### Changes to TrackMap.tsx
 
-- Accept `latitude`, `longitude`, and optional `zoom` as props
-- When props change, fly the map to the new location using `map.flyTo()`
-- Use smooth animation for a polished experience
-- Fall back to default Utah coordinates if none provided
-
-### 4. Update TrackEditor Page
-**`src/pages/TrackEditor.tsx`**
-
-- Pass coordinate props from selectedTrack to TrackMap component
+1. **Add state** for current map style
+2. **Add style configuration array** with name, id, and icon
+3. **Add dropdown menu** with Layers button trigger
+4. **Handle style change** using `map.setStyle()` method
+5. **Preserve camera position** when changing styles (center, zoom, pitch, bearing)
 
 ---
 
 ## Technical Details
 
-### Coordinate Parsing Logic
+### Style Change Logic
 ```text
-1. Match all <coordinates> tags in response
-2. For each match, split by comma: "40.58,-112.38,0" → [40.58, -112.38, 0]
-3. Parse as floats: latitude, longitude, zoom
-4. Associate with corresponding track by index order
+1. User clicks Layers button → dropdown opens
+2. User selects a style → call map.setStyle(newStyleUrl)
+3. Mapbox reloads tiles with new style
+4. Camera position (center, zoom, pitch, bearing) is preserved automatically
 ```
 
-### Map Animation
-When track changes, use Mapbox's `flyTo` method:
-- Duration: ~2 seconds
-- Zoom: Use value from coordinates, or default to 14
-- Smooth easing curve
+### Component Structure
+```text
+TrackMap
+├── Map container
+├── Track name overlay (top-left)
+└── Style switcher (bottom-right)
+    ├── Layers button (trigger)
+    └── Dropdown menu
+        ├── Dark ✓ (if selected)
+        ├── Light
+        ├── Streets
+        ├── Satellite
+        ├── Satellite Streets
+        └── Outdoors
+```
 
 ---
 
@@ -75,18 +73,13 @@ When track changes, use Mapbox's `flyTo` method:
 
 | File | Action |
 |------|--------|
-| `src/types/track.ts` | Modify - Add lat/lng/zoom fields |
-| `src/services/tracksApi.ts` | Modify - Parse coordinates tag |
-| `src/components/editor/TrackMap.tsx` | Modify - Accept coords, add flyTo |
-| `src/pages/TrackEditor.tsx` | Modify - Pass coords to TrackMap |
+| `src/components/editor/TrackMap.tsx` | Add style state, dropdown menu, and setStyle handler |
 
 ---
 
-## Future: Saving Coordinates
+## Visual Result
 
-Once reading works, we can add a "Save Location" button that:
-1. Captures current map center and zoom
-2. POSTs to an SFDC update endpoint
-3. Updates the coordinates field on the Property record
-
-This would require a write endpoint on the Real Intelligence API.
+- Floating **Layers** icon button (bottom-right corner)
+- Dropdown with 6 map style options
+- Current style indicated with checkmark
+- Smooth transition when changing styles
