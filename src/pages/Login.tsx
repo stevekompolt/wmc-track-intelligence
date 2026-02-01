@@ -136,17 +136,11 @@ export default function Login() {
               </Button>
             </form>
 
-            {/* SFDC Auth info */}
-            <div className="mt-6 pt-4 border-t border-border/50">
-              <p className="text-xs text-muted-foreground text-center font-mono">
-                SALESFORCE AUTHENTICATION
-              </p>
-            </div>
           </CardContent>
         </Card>
 
         <p className="text-center text-xs text-muted-foreground font-mono">
-          WORLD MOTO CLASH © 2024 • SECURE ACCESS
+          WORLD MOTO CLASH © {new Date().getFullYear()} • SECURE ACCESS
         </p>
       </div>
     </div>
