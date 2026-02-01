@@ -1,12 +1,29 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { Layers, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1IjoiZ29mYXN0ZXIiLCJhIjoiY204emFjMjJiMDI2czJrcTJiYWVqZmlsbSJ9.GRJpIZBzVU7vyxY7l9wUIQ';
 
 // Default coordinates (Utah area)
 const DEFAULT_CENTER: [number, number] = [-111.9, 40.5];
 const DEFAULT_ZOOM = 14;
+
+const MAP_STYLES = [
+  { id: 'dark', name: 'Dark', url: 'mapbox://styles/mapbox/dark-v11' },
+  { id: 'light', name: 'Light', url: 'mapbox://styles/mapbox/light-v11' },
+  { id: 'streets', name: 'Streets', url: 'mapbox://styles/mapbox/streets-v12' },
+  { id: 'satellite', name: 'Satellite', url: 'mapbox://styles/mapbox/satellite-v9' },
+  { id: 'satellite-streets', name: 'Satellite Streets', url: 'mapbox://styles/mapbox/satellite-streets-v12' },
+  { id: 'outdoors', name: 'Outdoors', url: 'mapbox://styles/mapbox/outdoors-v12' },
+];
 
 interface TrackMapProps {
   trackName?: string;
@@ -18,6 +35,7 @@ interface TrackMapProps {
 export function TrackMap({ trackName, latitude, longitude, zoom }: TrackMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const [currentStyle, setCurrentStyle] = useState('satellite-streets');
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -29,9 +47,11 @@ export function TrackMap({ trackName, latitude, longitude, zoom }: TrackMapProps
       latitude && longitude ? [longitude, latitude] : DEFAULT_CENTER;
     const initialZoom = zoom || DEFAULT_ZOOM;
 
+    const initialStyleUrl = MAP_STYLES.find(s => s.id === currentStyle)?.url || MAP_STYLES[4].url;
+
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
+      style: initialStyleUrl,
       center: initialCenter,
       zoom: initialZoom,
       pitch: 45,
@@ -59,14 +79,62 @@ export function TrackMap({ trackName, latitude, longitude, zoom }: TrackMapProps
     }
   }, [latitude, longitude, zoom]);
 
+  const handleStyleChange = (styleId: string) => {
+    if (!map.current) return;
+    
+    const style = MAP_STYLES.find(s => s.id === styleId);
+    if (!style) return;
+
+    // Preserve camera position
+    const center = map.current.getCenter();
+    const currentZoom = map.current.getZoom();
+    const pitch = map.current.getPitch();
+    const bearing = map.current.getBearing();
+
+    map.current.setStyle(style.url);
+    setCurrentStyle(styleId);
+
+    // Restore camera position after style loads
+    map.current.once('style.load', () => {
+      map.current?.setCenter(center);
+      map.current?.setZoom(currentZoom);
+      map.current?.setPitch(pitch);
+      map.current?.setBearing(bearing);
+    });
+  };
+
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="w-full h-full" />
+      
       {trackName && (
         <div className="absolute top-3 left-3 bg-card/90 backdrop-blur border border-border rounded px-3 py-1.5">
           <span className="text-xs font-mono text-foreground">{trackName}</span>
         </div>
       )}
+
+      {/* Style Switcher */}
+      <div className="absolute bottom-3 right-3 z-10">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" size="icon" className="bg-card/90 backdrop-blur border border-border hover:bg-card">
+              <Layers className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {MAP_STYLES.map((style) => (
+              <DropdownMenuItem
+                key={style.id}
+                onClick={() => handleStyleChange(style.id)}
+                className="flex items-center justify-between cursor-pointer"
+              >
+                <span>{style.name}</span>
+                {currentStyle === style.id && <Check className="h-4 w-4 text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
 }
