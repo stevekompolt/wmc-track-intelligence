@@ -1,71 +1,58 @@
 
-# Map Style Switcher
+# Remember Last Viewed Track
 
 ## Overview
-Add a layer/style switcher control to the TrackMap component so users can change between different map types. Currently the map uses `dark-v11` which is very dark - we'll add options for lighter and more varied map styles.
+Persist the user's last selected track so it automatically loads when they return to the Track Editor, even after logging out and back in.
 
 ---
 
-## Mapbox Style Options
+## Approach
 
-We'll include these commonly used Mapbox styles:
+Use **localStorage** to save the selected track ID. When the Track Editor mounts:
+1. Check localStorage for a saved track ID
+2. Once tracks are loaded from the API, find and select the matching track
+3. Whenever the user selects a different track, update localStorage
 
-| Style | Mapbox URL | Description |
-|-------|------------|-------------|
-| Dark | `mapbox://styles/mapbox/dark-v11` | Current dark theme |
-| Light | `mapbox://styles/mapbox/light-v11` | Light/white theme |
-| Streets | `mapbox://styles/mapbox/streets-v12` | Standard street map |
-| Satellite | `mapbox://styles/mapbox/satellite-v9` | Aerial imagery |
-| Satellite Streets | `mapbox://styles/mapbox/satellite-streets-v12` | Satellite with labels |
-| Outdoors | `mapbox://styles/mapbox/outdoors-v12` | Terrain-focused |
-
----
-
-## UI Design
-
-A floating button with a **Layers icon** in the bottom-right corner of the map. Clicking it opens a dropdown menu with the style options. The current selection shows a checkmark.
-
-Position: Bottom-right (avoiding conflict with navigation controls in top-right)
+Using localStorage (vs sessionStorage) ensures the preference persists across browser sessions and logouts.
 
 ---
 
 ## Implementation
 
-### Changes to TrackMap.tsx
+### Changes to TrackEditor.tsx
 
-1. **Add state** for current map style
-2. **Add style configuration array** with name, id, and icon
-3. **Add dropdown menu** with Layers button trigger
-4. **Handle style change** using `map.setStyle()` method
-5. **Preserve camera position** when changing styles (center, zoom, pitch, bearing)
+1. **Add storage key constant**: `wmc_last_track_id`
+
+2. **Initialize from localStorage**: On mount, read the saved track ID
+
+3. **Auto-select saved track**: Once tracks load via `useTracks()`, find and select the matching track
+
+4. **Save on selection change**: When user selects a new track, save its ID to localStorage
 
 ---
 
 ## Technical Details
 
-### Style Change Logic
+### Storage Logic
 ```text
-1. User clicks Layers button → dropdown opens
-2. User selects a style → call map.setStyle(newStyleUrl)
-3. Mapbox reloads tiles with new style
-4. Camera position (center, zoom, pitch, bearing) is preserved automatically
+On Mount:
+1. Read savedTrackId from localStorage
+
+On Tracks Load:
+2. If savedTrackId exists AND tracks are loaded
+3. Find track where track.id === savedTrackId
+4. If found, call setSelectedTrack(track)
+
+On Track Selection:
+5. Save selectedTrack.id to localStorage
+6. (Or remove from localStorage if null)
 ```
 
-### Component Structure
-```text
-TrackMap
-├── Map container
-├── Track name overlay (top-left)
-└── Style switcher (bottom-right)
-    ├── Layers button (trigger)
-    └── Dropdown menu
-        ├── Dark ✓ (if selected)
-        ├── Light
-        ├── Streets
-        ├── Satellite
-        ├── Satellite Streets
-        └── Outdoors
-```
+### Hook Integration
+The `useTracks()` hook returns `{ data: tracks, isLoading }`. We'll use a `useEffect` to auto-select once:
+- Tracks have loaded
+- We have a saved track ID
+- No track is currently selected (avoid overwriting manual selection)
 
 ---
 
@@ -73,13 +60,13 @@ TrackMap
 
 | File | Action |
 |------|--------|
-| `src/components/editor/TrackMap.tsx` | Add style state, dropdown menu, and setStyle handler |
+| `src/pages/TrackEditor.tsx` | Add localStorage read/write for track persistence |
 
 ---
 
-## Visual Result
+## User Experience
 
-- Floating **Layers** icon button (bottom-right corner)
-- Dropdown with 6 map style options
-- Current style indicated with checkmark
-- Smooth transition when changing styles
+- User selects "Utah Motorsports Campus"
+- User logs out and closes browser
+- User returns next day, logs in, goes to Track Editor
+- Map automatically loads Utah Motorsports Campus
