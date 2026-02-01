@@ -20,28 +20,26 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password required').max(128, 'Password too long'),
 });
 
-// Parse role from SFDC response - will be expanded when role data is provided
-function parseRoleFromResponse(userData: any): UserRole {
-  // TODO: Update this when role field information is provided
-  // For now, default to wmc_admin for testing
-  const roleField = userData?.role || userData?.Role__c || userData?.user_role || '';
+// Extract role from XML-style tag in response
+function extractRoleFromResponse(responseText: string): UserRole {
+  const match = responseText.match(/<intelrole>([^<]+)<\/intelrole>/i);
+  const roleValue = match ? match[1].trim().toLowerCase() : '';
   
   const roleMap: Record<string, UserRole> = {
     'race_engineering': 'race_engineering',
-    'Race Engineering': 'race_engineering',
+    'race engineering': 'race_engineering',
     'engineering': 'race_engineering',
     'race_operations': 'race_operations',
-    'Race Operations': 'race_operations',
+    'race operations': 'race_operations',
     'operations': 'race_operations',
     'media_broadcast': 'media_broadcast',
-    'Media & Broadcast': 'media_broadcast',
+    'media & broadcast': 'media_broadcast',
     'media': 'media_broadcast',
     'wmc_admin': 'wmc_admin',
-    'WMC Admin': 'wmc_admin',
     'admin': 'wmc_admin',
   };
 
-  return roleMap[roleField] || 'wmc_admin'; // Default to admin for now
+  return roleMap[roleValue] || 'wmc_admin';
 }
 
 // Extract password from XML-style tag in response
@@ -78,7 +76,6 @@ function parseUserFromResponse(responseData: any): Partial<User> | null {
       email,
       name,
       salesforceId: responseData.Id || responseData.sfdc_id,
-      role: parseRoleFromResponse(responseData),
     };
   } catch {
     return null;
@@ -143,6 +140,7 @@ async function authenticateWithSalesforce(credentials: LoginCredentials): Promis
     }
 
     const user = parseUserFromResponse(userData);
+    const role = extractRoleFromResponse(responseText);
     
     if (!user) {
       return { success: false, error: 'Unable to process user data.' };
@@ -154,7 +152,7 @@ async function authenticateWithSalesforce(credentials: LoginCredentials): Promis
         id: user.id || `usr_${Date.now()}`,
         email: user.email || email,
         name: user.name || email.split('@')[0],
-        role: user.role || 'wmc_admin',
+        role,
         salesforceId: user.salesforceId,
       },
     };
