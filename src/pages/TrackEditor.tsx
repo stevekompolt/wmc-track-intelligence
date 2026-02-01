@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Map, Layers, MousePointer2 } from 'lucide-react';
 import { TrackSelector } from '@/components/editor/TrackSelector';
+import { TrackMap } from '@/components/editor/TrackMap';
 import { Track } from '@/types/track';
 
 export default function TrackEditor() {
@@ -44,22 +45,24 @@ export default function TrackEditor() {
             <span className="text-xs font-mono text-muted-foreground">2D VIEW</span>
           </div>
         </div>
-        <div className="flex-1 flex items-center justify-center bg-background">
-          <Card className="border-dashed">
-            <CardContent className="p-8 flex flex-col items-center gap-4">
-              <Map className="h-12 w-12 text-muted-foreground" />
-              <div className="text-center">
-                <p className="font-display text-lg">
-                  {selectedTrack ? selectedTrack.name : 'Map Canvas'}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {selectedTrack
-                    ? 'Mapbox integration coming next'
-                    : 'Select a track to load the map'}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="flex-1 bg-background">
+          {selectedTrack ? (
+            <TrackMap trackName={selectedTrack.name} />
+          ) : (
+            <div className="flex-1 h-full flex items-center justify-center">
+              <Card className="border-dashed">
+                <CardContent className="p-8 flex flex-col items-center gap-4">
+                  <Map className="h-12 w-12 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="font-display text-lg">Map Canvas</p>
+                    <p className="text-sm text-muted-foreground">
+                      Select a track to load the map
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
 
