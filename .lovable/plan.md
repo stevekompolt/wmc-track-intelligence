@@ -1,114 +1,92 @@
 
-
-# Track List Integration for Track Editor
+# Track Coordinate Integration
 
 ## Overview
-Add a track selector to the Track Editor that fetches the list of available tracks from the SFDC property list API. When a track is selected, it will become the active context for the editor, enabling track-specific feature editing.
+Update the track parsing and map component to read coordinates from the API and automatically center the map when a track is selected.
 
 ---
 
-## API Integration
+## API Data Format
 
-### Endpoint Details
-- **URL**: `https://api.realintelligence.com/api/specific-property-list.py?orgId=00D5e000000HEcP&sandbox=False`
-- **Method**: GET
-- **Auth**: None required
-- **Response Format**: Custom delimited text (not JSON)
+The coordinates tag format from SFDC:
+```xml
+<coordinates>40.580477,-112.380066,0</coordinates>
+```
 
-### Response Parsing
-Based on the API response pattern, each track record contains:
-- Track Name (e.g., "Utah Motorsports Campus")
-- Salesforce ID (e.g., "a0xDm000004qI5oIAE")
-- Sponsor/Description text
-- Boolean and numeric metadata fields
-
-A parser will extract track name and ID from each record by identifying the 18-character Salesforce ID pattern (`a0x[A-Za-z0-9]{15}`).
+Values:
+- **latitude**: 40.580477
+- **longitude**: -112.380066  
+- **zoom/elevation**: 0 (we can use this as zoom level or ignore if 0)
 
 ---
 
-## New Files to Create
+## Implementation Changes
 
-### 1. Track Type Definitions
+### 1. Update Track Type
 **`src/types/track.ts`**
-- `Track` interface with id, name, description, and metadata
-- `TrackState` for managing selected track context
 
-### 2. Tracks API Service
+Add coordinate fields to the Track interface:
+- `latitude?: number`
+- `longitude?: number`
+- `zoom?: number`
+
+### 2. Update API Parser
 **`src/services/tracksApi.ts`**
-- `fetchTracks()` function to call the property list endpoint
-- Response parser to extract track records from custom format
-- Error handling for network/parse failures
 
-### 3. Tracks Hook
-**`src/hooks/useTracks.ts`**
-- React Query hook for fetching and caching tracks
-- Loading and error states
-- Automatic refetch on mount
+Add parsing for the coordinates tag:
+- Extract using pattern: `/<coordinates>([^<]+)<\/coordinates>/gi`
+- Split the value by comma to get lat, lng, zoom
+- Pair with corresponding track records
 
-### 4. Track Selector Component
-**`src/components/editor/TrackSelector.tsx`**
-- Dropdown/select component showing available tracks
-- Current track indicator
-- Loading skeleton while fetching
+### 3. Update TrackMap Component
+**`src/components/editor/TrackMap.tsx`**
+
+- Accept `latitude`, `longitude`, and optional `zoom` as props
+- When props change, fly the map to the new location using `map.flyTo()`
+- Use smooth animation for a polished experience
+- Fall back to default Utah coordinates if none provided
+
+### 4. Update TrackEditor Page
+**`src/pages/TrackEditor.tsx`**
+
+- Pass coordinate props from selectedTrack to TrackMap component
 
 ---
 
-## Track Editor Modifications
+## Technical Details
 
-### Left Panel Enhancement
-The Feature Toolbox panel will be reorganized:
-
+### Coordinate Parsing Logic
 ```text
-+---------------------------+
-| TRACK SELECTOR            |
-| [▼ Utah Motorsports...  ] |
-+---------------------------+
-| FEATURE TOOLBOX           |
-| Drawing tools...          |
-+---------------------------+
+1. Match all <coordinates> tags in response
+2. For each match, split by comma: "40.58,-112.38,0" → [40.58, -112.38, 0]
+3. Parse as floats: latitude, longitude, zoom
+4. Associate with corresponding track by index order
 ```
 
-### State Management
-- Selected track stored in component state (for now)
-- Future: Context provider for track selection across views
+### Map Animation
+When track changes, use Mapbox's `flyTo` method:
+- Duration: ~2 seconds
+- Zoom: Use value from coordinates, or default to 14
+- Smooth easing curve
 
 ---
 
-## Technical Implementation
-
-### API Response Parsing Logic
-```text
-1. Split response by Salesforce ID pattern
-2. Extract track name from text before ID
-3. Extract ID from the 18-character match
-4. Extract description from text after ID
-5. Return array of Track objects
-```
-
-### Error Handling
-- Network errors: Show retry option in dropdown
-- Parse errors: Log warning, show available tracks only
-- Empty response: Display "No tracks available" message
-
----
-
-## User Experience
-
-1. User navigates to Track Editor
-2. Track list loads automatically in the selector
-3. User selects a track from the dropdown
-4. Editor context updates to show selected track name
-5. Future: Map canvas centers on track location when available
-
----
-
-## Files Changed Summary
+## Files Changed
 
 | File | Action |
 |------|--------|
-| `src/types/track.ts` | Create - Track type definitions |
-| `src/services/tracksApi.ts` | Create - API fetch and parser |
-| `src/hooks/useTracks.ts` | Create - React Query hook |
-| `src/components/editor/TrackSelector.tsx` | Create - Selector UI |
-| `src/pages/TrackEditor.tsx` | Modify - Add track selector to left panel |
+| `src/types/track.ts` | Modify - Add lat/lng/zoom fields |
+| `src/services/tracksApi.ts` | Modify - Parse coordinates tag |
+| `src/components/editor/TrackMap.tsx` | Modify - Accept coords, add flyTo |
+| `src/pages/TrackEditor.tsx` | Modify - Pass coords to TrackMap |
 
+---
+
+## Future: Saving Coordinates
+
+Once reading works, we can add a "Save Location" button that:
+1. Captures current map center and zoom
+2. POSTs to an SFDC update endpoint
+3. Updates the coordinates field on the Property record
+
+This would require a write endpoint on the Real Intelligence API.
