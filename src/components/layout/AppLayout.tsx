@@ -239,10 +239,9 @@ export function AppLayout() {
         {showMap && <SharedMapContainer />}
         
         {/* Mode Overlay Layer */}
-        <div className={cn(
-          "absolute inset-0",
-          showMap && "pointer-events-none [&>*]:pointer-events-auto"
-        )}>
+        {/* Important: keep this layer pointer-events-none so the map still receives pan/zoom.
+            Individual pages (toolbars/panels) opt back in with pointer-events-auto. */}
+        <div className={cn("absolute inset-0", showMap && "pointer-events-none")}>
           <Outlet />
         </div>
       </main>
