@@ -9,9 +9,9 @@ export default function FanExperience() {
   const { selectedTrack } = useTrackContext();
 
   return (
-    <div className="relative h-full">
+    <div className="relative h-full pointer-events-none">
       {/* Top Toolbar */}
-      <div className="absolute top-0 left-0 right-72 z-10 flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/95 backdrop-blur">
+      <div className="absolute top-0 left-0 right-72 z-10 flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/95 backdrop-blur pointer-events-auto">
         <div className="flex items-center gap-4">
           <Users className="h-4 w-4 text-zone-fan" />
           <span className="text-xs font-mono text-muted-foreground">FAN EXPERIENCE PREVIEW</span>
@@ -42,7 +42,7 @@ export default function FanExperience() {
       </div>
 
       {/* Right Panel - Visibility Validation */}
-      <div className="absolute top-0 right-0 bottom-0 w-72 z-10 border-l border-border bg-card/95 backdrop-blur flex flex-col">
+      <div className="absolute top-0 right-0 bottom-0 w-72 z-10 border-l border-border bg-card/95 backdrop-blur flex flex-col pointer-events-auto">
         <div className="p-3 border-b border-border">
           <h2 className="font-display text-sm font-semibold tracking-wider">
             VISIBILITY CHECK
