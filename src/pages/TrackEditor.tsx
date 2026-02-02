@@ -1,52 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Map, Layers, MousePointer2 } from 'lucide-react';
-import { TrackSelector } from '@/components/editor/TrackSelector';
 import { TrackMap } from '@/components/editor/TrackMap';
-import { Track } from '@/types/track';
-import { useTracks } from '@/hooks/useTracks';
-
-const STORAGE_KEY = 'wmc_last_track_id';
+import { useTrackContext } from '@/contexts/TrackContext';
 
 export default function TrackEditor() {
-  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
-  const { data: tracks } = useTracks();
-  const hasAutoSelected = useRef(false);
-
-  // Auto-select saved track once tracks load
-  useEffect(() => {
-    if (hasAutoSelected.current || !tracks?.length) return;
-    
-    const savedTrackId = localStorage.getItem(STORAGE_KEY);
-    if (savedTrackId) {
-      const savedTrack = tracks.find((t) => t.id === savedTrackId);
-      if (savedTrack) {
-        setSelectedTrack(savedTrack);
-      }
-    }
-    hasAutoSelected.current = true;
-  }, [tracks]);
-
-  // Save selected track to localStorage
-  useEffect(() => {
-    if (selectedTrack) {
-      localStorage.setItem(STORAGE_KEY, selectedTrack.id);
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  }, [selectedTrack]);
+  const { selectedTrack } = useTrackContext();
 
   return (
     <div className="flex h-full">
-      {/* Left Panel - Track Selector & Feature Toolbox */}
+      {/* Left Panel - Feature Toolbox */}
       <div className="w-64 border-r border-border bg-card/50 flex flex-col">
-        {/* Track Selector */}
-        <TrackSelector
-          selectedTrack={selectedTrack}
-          onSelectTrack={setSelectedTrack}
-        />
-
-        {/* Feature Toolbox */}
         <div className="p-3 border-b border-border">
           <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
             <Layers className="h-4 w-4 text-primary" />
@@ -89,7 +52,7 @@ export default function TrackEditor() {
                   <div className="text-center">
                     <p className="font-display text-lg">Map Canvas</p>
                     <p className="text-sm text-muted-foreground">
-                      Select a track to load the map
+                      Select a track from the nav bar to load the map
                     </p>
                   </div>
                 </CardContent>

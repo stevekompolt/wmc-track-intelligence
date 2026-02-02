@@ -1,8 +1,12 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Radio, AlertTriangle, Activity } from 'lucide-react';
+import { Radio, AlertTriangle, Activity, Map } from 'lucide-react';
+import { TrackMap } from '@/components/editor/TrackMap';
+import { useTrackContext } from '@/contexts/TrackContext';
 
 export default function EventOps() {
+  const { selectedTrack } = useTrackContext();
+
   return (
     <div className="flex h-full">
       {/* Main Map Area */}
@@ -17,18 +21,29 @@ export default function EventOps() {
             <span className="text-xs font-mono text-muted-foreground">NO ACTIVE EVENT</span>
           </div>
         </div>
-        <div className="flex-1 flex items-center justify-center bg-background">
-          <Card className="border-dashed">
-            <CardContent className="p-8 flex flex-col items-center gap-4">
-              <Activity className="h-12 w-12 text-muted-foreground" />
-              <div className="text-center">
-                <p className="font-display text-lg">Operations Map</p>
-                <p className="text-sm text-muted-foreground">
-                  Live track status and zone monitoring
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="flex-1 bg-background">
+          {selectedTrack ? (
+            <TrackMap 
+              trackName={selectedTrack.name}
+              latitude={selectedTrack.latitude}
+              longitude={selectedTrack.longitude}
+              zoom={selectedTrack.zoom}
+            />
+          ) : (
+            <div className="flex-1 h-full flex items-center justify-center">
+              <Card className="border-dashed">
+                <CardContent className="p-8 flex flex-col items-center gap-4">
+                  <Activity className="h-12 w-12 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="font-display text-lg">Operations Map</p>
+                    <p className="text-sm text-muted-foreground">
+                      Select a track from the nav bar
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
 
