@@ -1,19 +1,32 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings as SettingsIcon, Database, Users, Key, Server } from 'lucide-react';
+import { Settings as SettingsIcon, Database, Users, Key, Server, Shield } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { ROLE_ACCESS } from '@/types/auth';
 
 export default function Settings() {
+  const { user } = useAuth();
+  const roleConfig = user?.role ? ROLE_ACCESS[user.role] : null;
+
   return (
     <div className="h-full overflow-auto p-6">
       <div className="mx-auto max-w-4xl space-y-6">
-        <div className="space-y-2">
-          <h1 className="font-display text-2xl font-bold tracking-wider flex items-center gap-3">
-            <SettingsIcon className="h-6 w-6 text-primary" />
-            SYSTEM SETTINGS
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Configure system integrations and manage access
-          </p>
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <h1 className="font-display text-2xl font-bold tracking-wider flex items-center gap-3">
+              <SettingsIcon className="h-6 w-6 text-primary" />
+              SYSTEM SETTINGS
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              Configure system integrations and manage access
+            </p>
+          </div>
+          {roleConfig && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-md border border-primary/30 bg-primary/5">
+              <Shield className="h-4 w-4 text-primary" />
+              <span className="font-mono text-sm text-primary">{roleConfig.label}</span>
+            </div>
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">

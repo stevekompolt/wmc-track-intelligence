@@ -138,15 +138,6 @@ export function AppLayout() {
 
         {/* Right: User Menu */}
         <div className="flex items-center gap-4">
-          {/* Role Badge */}
-          {roleConfig && (
-            <Badge
-              variant="outline"
-              className="hidden md:flex border-primary/30 text-primary font-mono text-xs"
-            >
-              {roleConfig.label}
-            </Badge>
-          )}
 
           {/* Mobile Menu Toggle */}
           <Button
