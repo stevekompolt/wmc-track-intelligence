@@ -3,9 +3,12 @@ import { Badge } from '@/components/ui/badge';
 import { Users, Eye, EyeOff, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
+import { TrackMap } from '@/components/editor/TrackMap';
+import { useTrackContext } from '@/contexts/TrackContext';
 
 export default function FanExperience() {
   const [viewMode, setViewMode] = useState<'internal' | 'public'>('public');
+  const { selectedTrack } = useTrackContext();
 
   return (
     <div className="flex h-full">
@@ -40,18 +43,29 @@ export default function FanExperience() {
             </Button>
           </div>
         </div>
-        <div className="flex-1 flex items-center justify-center bg-background">
-          <Card className="border-dashed">
-            <CardContent className="p-8 flex flex-col items-center gap-4">
-              <MapPin className="h-12 w-12 text-muted-foreground" />
-              <div className="text-center">
-                <p className="font-display text-lg">Fan View Map</p>
-                <p className="text-sm text-muted-foreground">
-                  Public-safe track layout and spectator zones
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="flex-1 bg-background">
+          {selectedTrack ? (
+            <TrackMap 
+              trackName={selectedTrack.name}
+              latitude={selectedTrack.latitude}
+              longitude={selectedTrack.longitude}
+              zoom={selectedTrack.zoom}
+            />
+          ) : (
+            <div className="flex-1 h-full flex items-center justify-center">
+              <Card className="border-dashed">
+                <CardContent className="p-8 flex flex-col items-center gap-4">
+                  <MapPin className="h-12 w-12 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="font-display text-lg">Fan View Map</p>
+                    <p className="text-sm text-muted-foreground">
+                      Select a track from the nav bar
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
 

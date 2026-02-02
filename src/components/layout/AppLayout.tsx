@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { GlobalTrackSelector } from '@/components/layout/GlobalTrackSelector';
 
 interface NavItem {
   id: string;
@@ -77,8 +78,8 @@ export function AppLayout() {
     <div className="flex h-screen flex-col bg-background">
       {/* Top Navigation Bar */}
       <header className="flex h-14 items-center justify-between border-b border-border bg-card/50 px-4">
-        {/* Left: Logo & Brand */}
-        <div className="flex items-center gap-6">
+        {/* Left: Logo & Track Selector */}
+        <div className="flex items-center gap-4">
           <Link to="/" className="flex items-center gap-2">
             <Shield className="h-6 w-6 text-primary" />
             <span className="font-display text-lg font-bold tracking-wider hidden sm:inline">
@@ -89,46 +90,51 @@ export function AppLayout() {
             </span>
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center gap-1">
-            {navItems.map((item) => {
-              const isAccessible = canAccessView(user?.role, item.view);
-              const isActive = location.pathname.startsWith(item.path);
+          {/* Global Track Selector */}
+          <div className="hidden md:flex items-center border-l border-border pl-4">
+            <GlobalTrackSelector />
+          </div>
+        </div>
 
-              if (!isAccessible) return null;
+        {/* Center: Navigation */}
+        <nav className="hidden lg:flex items-center gap-1">
+          {navItems.map((item) => {
+            const isAccessible = canAccessView(user?.role, item.view);
+            const isActive = location.pathname.startsWith(item.path);
 
-              return (
-                <Link key={item.id} to={item.path}>
-                  <Button
-                    variant={isActive ? 'default' : 'ghost'}
-                    size="sm"
-                    className={cn(
-                      'gap-2 font-display text-xs tracking-wide',
-                      isActive && 'glow-primary'
-                    )}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </Button>
-                </Link>
-              );
-            })}
+            if (!isAccessible) return null;
 
-            {/* Settings - Admin only */}
-            {canAccessView(user?.role, 'settings') && (
-              <Link to="/settings">
+            return (
+              <Link key={item.id} to={item.path}>
                 <Button
-                  variant={location.pathname === '/settings' ? 'default' : 'ghost'}
+                  variant={isActive ? 'default' : 'ghost'}
                   size="sm"
-                  className="gap-2 font-display text-xs tracking-wide"
+                  className={cn(
+                    'gap-2 font-display text-xs tracking-wide',
+                    isActive && 'glow-primary'
+                  )}
                 >
-                  <Settings className="h-4 w-4" />
-                  Settings
+                  {item.icon}
+                  {item.label}
                 </Button>
               </Link>
-            )}
-          </nav>
-        </div>
+            );
+          })}
+
+          {/* Settings - Admin only */}
+          {canAccessView(user?.role, 'settings') && (
+            <Link to="/settings">
+              <Button
+                variant={location.pathname === '/settings' ? 'default' : 'ghost'}
+                size="sm"
+                className="gap-2 font-display text-xs tracking-wide"
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Button>
+            </Link>
+          )}
+        </nav>
 
         {/* Right: User Menu */}
         <div className="flex items-center gap-4">
