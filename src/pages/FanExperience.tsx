@@ -11,7 +11,7 @@ export default function FanExperience() {
   return (
     <div className="relative h-full pointer-events-none">
       {/* Top Toolbar */}
-      <div className="absolute top-0 left-0 right-72 z-10 flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/95 backdrop-blur pointer-events-auto">
+      <div className="absolute top-0 left-0 right-72 z-10 flex items-center justify-between px-3 h-10 bg-secondary/95 backdrop-blur pointer-events-auto">
         <div className="flex items-center gap-4">
           <Users className="h-4 w-4 text-zone-fan" />
           <span className="text-xs font-mono text-muted-foreground">FAN EXPERIENCE PREVIEW</span>

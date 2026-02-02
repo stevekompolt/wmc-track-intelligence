@@ -8,7 +8,7 @@ export default function EventOps() {
   return (
     <div className="relative h-full pointer-events-none">
       {/* Top Toolbar */}
-      <div className="absolute top-0 left-0 right-72 z-10 flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/95 backdrop-blur pointer-events-auto">
+      <div className="absolute top-0 left-0 right-72 z-10 flex items-center justify-between px-3 h-10 bg-secondary/95 backdrop-blur pointer-events-auto">
         <div className="flex items-center gap-4">
           <Radio className="h-4 w-4 text-status-clear animate-pulse" />
           <span className="text-xs font-mono text-muted-foreground">LIVE OPERATIONS VIEW</span>
