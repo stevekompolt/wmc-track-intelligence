@@ -1,9 +1,7 @@
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, Eye, EyeOff, MapPin } from 'lucide-react';
+import { Users, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
-import { TrackMap } from '@/components/editor/TrackMap';
 import { useTrackContext } from '@/contexts/TrackContext';
 
 export default function FanExperience() {
@@ -11,66 +9,40 @@ export default function FanExperience() {
   const { selectedTrack } = useTrackContext();
 
   return (
-    <div className="flex h-full">
-      {/* Center - Public View Preview */}
-      <div className="flex-1 flex flex-col">
-        <div className="flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/30">
-          <div className="flex items-center gap-4">
-            <Users className="h-4 w-4 text-zone-fan" />
-            <span className="text-xs font-mono text-muted-foreground">FAN EXPERIENCE PREVIEW</span>
-            <Badge variant="outline" className="text-xs border-zone-fan/50 text-zone-fan">
-              {viewMode === 'public' ? 'PUBLIC VIEW' : 'INTERNAL VIEW'}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={viewMode === 'internal' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="gap-2 text-xs"
-              onClick={() => setViewMode('internal')}
-            >
-              <Eye className="h-3 w-3" />
-              Internal
-            </Button>
-            <Button
-              variant={viewMode === 'public' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="gap-2 text-xs"
-              onClick={() => setViewMode('public')}
-            >
-              <EyeOff className="h-3 w-3" />
-              Public
-            </Button>
-          </div>
+    <div className="relative h-full">
+      {/* Top Toolbar */}
+      <div className="absolute top-0 left-0 right-72 z-10 flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/95 backdrop-blur">
+        <div className="flex items-center gap-4">
+          <Users className="h-4 w-4 text-zone-fan" />
+          <span className="text-xs font-mono text-muted-foreground">FAN EXPERIENCE PREVIEW</span>
+          <Badge variant="outline" className="text-xs border-zone-fan/50 text-zone-fan">
+            {viewMode === 'public' ? 'PUBLIC VIEW' : 'INTERNAL VIEW'}
+          </Badge>
         </div>
-        <div className="flex-1 bg-background">
-          {selectedTrack ? (
-            <TrackMap 
-              trackName={selectedTrack.name}
-              latitude={selectedTrack.latitude}
-              longitude={selectedTrack.longitude}
-              zoom={selectedTrack.zoom}
-            />
-          ) : (
-            <div className="flex-1 h-full flex items-center justify-center">
-              <Card className="border-dashed">
-                <CardContent className="p-8 flex flex-col items-center gap-4">
-                  <MapPin className="h-12 w-12 text-muted-foreground" />
-                  <div className="text-center">
-                    <p className="font-display text-lg">Fan View Map</p>
-                    <p className="text-sm text-muted-foreground">
-                      Select a track from the nav bar
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <Button
+            variant={viewMode === 'internal' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="gap-2 text-xs"
+            onClick={() => setViewMode('internal')}
+          >
+            <Eye className="h-3 w-3" />
+            Internal
+          </Button>
+          <Button
+            variant={viewMode === 'public' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="gap-2 text-xs"
+            onClick={() => setViewMode('public')}
+          >
+            <EyeOff className="h-3 w-3" />
+            Public
+          </Button>
         </div>
       </div>
 
       {/* Right Panel - Visibility Validation */}
-      <div className="w-72 border-l border-border bg-card/50 flex flex-col">
+      <div className="absolute top-0 right-0 bottom-0 w-72 z-10 border-l border-border bg-card/95 backdrop-blur flex flex-col">
         <div className="p-3 border-b border-border">
           <h2 className="font-display text-sm font-semibold tracking-wider">
             VISIBILITY CHECK
