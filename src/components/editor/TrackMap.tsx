@@ -107,11 +107,6 @@ export function TrackMap({ trackName, latitude, longitude, zoom }: TrackMapProps
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="w-full h-full" />
       
-      {trackName && (
-        <div className="absolute top-3 left-3 bg-card/90 backdrop-blur border border-border rounded px-3 py-1.5">
-          <span className="text-xs font-mono text-foreground">{trackName}</span>
-        </div>
-      )}
 
       {/* Style Switcher */}
       <div className="absolute bottom-3 right-3 z-10">
