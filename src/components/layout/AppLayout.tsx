@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessView, ROLE_ACCESS } from '@/types/auth';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +26,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GlobalTrackSelector } from '@/components/layout/GlobalTrackSelector';
+import { SharedMapContainer } from '@/components/layout/SharedMapContainer';
 
 interface NavItem {
   id: string;
@@ -73,6 +73,13 @@ export function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const roleConfig = user?.role ? ROLE_ACCESS[user.role] : null;
+
+  // Determine if we're on a map-based route
+  const mapRoutes = ['/editor', '/ops', '/media', '/fan'];
+  const showMap = useMemo(
+    () => mapRoutes.some(route => location.pathname.startsWith(route)),
+    [location.pathname]
+  );
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -227,8 +234,17 @@ export function AppLayout() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden">
-        <Outlet />
+      <main className="flex-1 overflow-hidden relative">
+        {/* Persistent Map Layer */}
+        {showMap && <SharedMapContainer />}
+        
+        {/* Mode Overlay Layer */}
+        <div className={cn(
+          "absolute inset-0",
+          showMap && "pointer-events-none [&>*]:pointer-events-auto"
+        )}>
+          <Outlet />
+        </div>
       </main>
 
       {/* Status Bar */}

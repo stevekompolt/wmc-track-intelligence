@@ -1,54 +1,26 @@
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Radio, AlertTriangle, Activity, Map } from 'lucide-react';
-import { TrackMap } from '@/components/editor/TrackMap';
+import { Radio, AlertTriangle } from 'lucide-react';
 import { useTrackContext } from '@/contexts/TrackContext';
 
 export default function EventOps() {
   const { selectedTrack } = useTrackContext();
 
   return (
-    <div className="flex h-full">
-      {/* Main Map Area */}
-      <div className="flex-1 flex flex-col">
-        <div className="flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/30">
-          <div className="flex items-center gap-4">
-            <Radio className="h-4 w-4 text-status-clear animate-pulse" />
-            <span className="text-xs font-mono text-muted-foreground">LIVE OPERATIONS VIEW</span>
-            <Badge className="status-clear text-xs">ALL CLEAR</Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-muted-foreground">NO ACTIVE EVENT</span>
-          </div>
+    <div className="relative h-full">
+      {/* Top Toolbar */}
+      <div className="absolute top-0 left-0 right-72 z-10 flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/95 backdrop-blur">
+        <div className="flex items-center gap-4">
+          <Radio className="h-4 w-4 text-status-clear animate-pulse" />
+          <span className="text-xs font-mono text-muted-foreground">LIVE OPERATIONS VIEW</span>
+          <Badge className="status-clear text-xs">ALL CLEAR</Badge>
         </div>
-        <div className="flex-1 bg-background">
-          {selectedTrack ? (
-            <TrackMap 
-              trackName={selectedTrack.name}
-              latitude={selectedTrack.latitude}
-              longitude={selectedTrack.longitude}
-              zoom={selectedTrack.zoom}
-            />
-          ) : (
-            <div className="flex-1 h-full flex items-center justify-center">
-              <Card className="border-dashed">
-                <CardContent className="p-8 flex flex-col items-center gap-4">
-                  <Activity className="h-12 w-12 text-muted-foreground" />
-                  <div className="text-center">
-                    <p className="font-display text-lg">Operations Map</p>
-                    <p className="text-sm text-muted-foreground">
-                      Select a track from the nav bar
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-muted-foreground">NO ACTIVE EVENT</span>
         </div>
       </div>
 
       {/* Right Panel - Operations Dashboard */}
-      <div className="w-72 border-l border-border bg-card/50 flex flex-col">
+      <div className="absolute top-0 right-0 bottom-0 w-72 z-10 border-l border-border bg-card/95 backdrop-blur flex flex-col">
         <div className="p-3 border-b border-border">
           <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-status-caution" />
