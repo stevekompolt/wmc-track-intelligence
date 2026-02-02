@@ -48,7 +48,7 @@ export default function EventOps() {
       </div>
 
       {/* Right Panel - Operations Dashboard */}
-      <div className="w-80 border-l border-border bg-card/50 flex flex-col">
+      <div className="w-72 border-l border-border bg-card/50 flex flex-col">
         <div className="p-3 border-b border-border">
           <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-status-caution" />

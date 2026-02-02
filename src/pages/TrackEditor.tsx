@@ -8,23 +8,6 @@ export default function TrackEditor() {
 
   return (
     <div className="flex h-full">
-      {/* Left Panel - Feature Toolbox */}
-      <div className="w-64 border-r border-border bg-card/50 flex flex-col">
-        <div className="p-3 border-b border-border">
-          <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
-            <Layers className="h-4 w-4 text-primary" />
-            FEATURE TOOLBOX
-          </h2>
-        </div>
-        <div className="flex-1 p-3 overflow-auto">
-          <p className="text-xs text-muted-foreground font-mono">
-            {selectedTrack
-              ? 'Drawing tools will be available here'
-              : 'Select a track to begin editing'}
-          </p>
-        </div>
-      </div>
-
       {/* Center - Map Canvas */}
       <div className="flex-1 flex flex-col">
         <div className="flex items-center justify-between p-2 border-b border-border bg-secondary/30">
@@ -62,8 +45,24 @@ export default function TrackEditor() {
         </div>
       </div>
 
-      {/* Right Panel - Feature Inspector */}
+      {/* Right Panel - Tools */}
       <div className="w-72 border-l border-border bg-card/50 flex flex-col">
+        {/* Feature Toolbox */}
+        <div className="p-3 border-b border-border">
+          <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
+            <Layers className="h-4 w-4 text-primary" />
+            FEATURE TOOLBOX
+          </h2>
+        </div>
+        <div className="flex-1 p-3 overflow-auto border-b border-border">
+          <p className="text-xs text-muted-foreground font-mono">
+            {selectedTrack
+              ? 'Drawing tools will be available here'
+              : 'Select a track to begin editing'}
+          </p>
+        </div>
+        
+        {/* Feature Inspector */}
         <div className="p-3 border-b border-border">
           <h2 className="font-display text-sm font-semibold tracking-wider">
             FEATURE INSPECTOR
