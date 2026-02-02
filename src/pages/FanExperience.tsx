@@ -14,7 +14,7 @@ export default function FanExperience() {
     <div className="flex h-full">
       {/* Center - Public View Preview */}
       <div className="flex-1 flex flex-col">
-        <div className="flex items-center justify-between p-2 border-b border-border bg-secondary/30">
+        <div className="flex items-center justify-between px-3 h-10 border-b border-border bg-secondary/30">
           <div className="flex items-center gap-4">
             <Users className="h-4 w-4 text-zone-fan" />
             <span className="text-xs font-mono text-muted-foreground">FAN EXPERIENCE PREVIEW</span>
