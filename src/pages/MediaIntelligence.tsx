@@ -8,23 +8,6 @@ export default function MediaIntelligence() {
 
   return (
     <div className="flex h-full">
-      {/* Left Panel - Camera List */}
-      <div className="w-64 border-r border-border bg-card/50 flex flex-col">
-        <div className="p-3 border-b border-border">
-          <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
-            <Video className="h-4 w-4 text-zone-media" />
-            CAMERAS
-          </h2>
-        </div>
-        <div className="flex-1 p-3 overflow-auto">
-          <p className="text-xs text-muted-foreground font-mono">
-            {selectedTrack
-              ? 'Camera positions will be listed here'
-              : 'Select a track first'}
-          </p>
-        </div>
-      </div>
-
       {/* Center - Map with Camera Views */}
       <div className="flex-1 flex flex-col">
         <div className="flex items-center justify-between p-2 border-b border-border bg-secondary/30">
@@ -62,8 +45,24 @@ export default function MediaIntelligence() {
         </div>
       </div>
 
-      {/* Right Panel - Playback Controls */}
+      {/* Right Panel - Tools */}
       <div className="w-72 border-l border-border bg-card/50 flex flex-col">
+        {/* Cameras */}
+        <div className="p-3 border-b border-border">
+          <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
+            <Video className="h-4 w-4 text-zone-media" />
+            CAMERAS
+          </h2>
+        </div>
+        <div className="flex-1 p-3 overflow-auto border-b border-border">
+          <p className="text-xs text-muted-foreground font-mono">
+            {selectedTrack
+              ? 'Camera positions will be listed here'
+              : 'Select a track first'}
+          </p>
+        </div>
+        
+        {/* Playback Controls */}
         <div className="p-3 border-b border-border">
           <h2 className="font-display text-sm font-semibold tracking-wider">
             PLAYBACK
