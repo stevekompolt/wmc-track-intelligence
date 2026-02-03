@@ -276,6 +276,22 @@ export function useMapOverlayRenderer({
     updateMarkers();
   }, [updateMarkers]);
 
+  // Effect: Add error handler for image loading failures
+  useEffect(() => {
+    if (!map) return;
+    
+    const handleError = (e: mapboxgl.ErrorEvent & { sourceId?: string }) => {
+      if (e.sourceId === sourceId || e.sourceId === ghostSourceId) {
+        console.error('Failed to load overlay image:', e.error?.message || 'Unknown error');
+      }
+    };
+    
+    map.on('error', handleError);
+    return () => {
+      map.off('error', handleError);
+    };
+  }, [map]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {

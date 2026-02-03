@@ -99,13 +99,26 @@ export function OverlayEditorPanel({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // Create object URL for preview (in production, upload to storage)
-    const url = URL.createObjectURL(file);
-    onSetImageUrl(url);
+    // Validate file type - only PNG/JPEG supported by Mapbox
+    if (!file.type.match(/^image\/(png|jpeg|jpg)$/)) {
+      console.error('Only PNG and JPEG images are supported for map overlays');
+      return;
+    }
+    
+    // Convert to data URL for reliable Mapbox rendering
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      onSetImageUrl(dataUrl);
+    };
+    reader.onerror = () => {
+      console.error('Failed to read image file');
+    };
+    reader.readAsDataURL(file);
   };
 
   const copyImageUrl = () => {
@@ -181,17 +194,17 @@ export function OverlayEditorPanel({
                 className="w-full h-full object-contain"
               />
             ) : (
-              <div className="text-center">
+            <div className="text-center">
                 <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                 <p className="text-xs text-muted-foreground">
-                  Click to upload PNG/SVG
+                  Click to upload PNG or JPEG
                 </p>
               </div>
             )}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/svg+xml"
+              accept="image/png,image/jpeg,image/jpg"
               className="hidden"
               onChange={handleImageUpload}
             />
