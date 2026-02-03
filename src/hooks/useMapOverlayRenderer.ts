@@ -45,6 +45,14 @@ export function useMapOverlayRenderer({
   const ghostSourceId = 'overlay-ghost';
   const ghostLayerId = 'overlay-ghost-layer';
   const dragStartRef = useRef<{ lat: number; lng: number } | null>(null);
+  const isDraggingRef = useRef(false);
+  
+  // Store callback refs to avoid recreating markers when callbacks change
+  const onCornerDragRef = useRef(onCornerDrag);
+  onCornerDragRef.current = onCornerDrag;
+  
+  const onMoveDragRef = useRef(onMoveDrag);
+  onMoveDragRef.current = onMoveDrag;
 
   // Add/update overlay image source and layer
   const updateOverlayLayer = useCallback(() => {
@@ -160,7 +168,7 @@ export function useMapOverlayRenderer({
     }
   }, [map, overlay?.imageUrl, ghostBounds]);
 
-  // Create corner markers
+  // Create corner markers - only called when drag mode changes
   const createCornerMarker = useCallback((
     corner: CornerHandle,
     lngLat: LngLatLike,
@@ -177,15 +185,23 @@ export function useMapOverlayRenderer({
     })
       .setLngLat(lngLat);
 
+    marker.on('dragstart', () => {
+      isDraggingRef.current = true;
+    });
+
     marker.on('drag', () => {
       const pos = marker.getLngLat();
-      onCornerDrag(corner, pos.lat, pos.lng);
+      onCornerDragRef.current(corner, pos.lat, pos.lng);
+    });
+
+    marker.on('dragend', () => {
+      isDraggingRef.current = false;
     });
 
     return marker;
-  }, [onCornerDrag]);
+  }, []);
 
-  // Create center marker for moving
+  // Create center marker for moving - only called when drag mode changes
   const createCenterMarker = useCallback((lngLat: LngLatLike): Marker => {
     const el = document.createElement('div');
     el.style.cssText = CENTER_MARKER_STYLE;
@@ -198,6 +214,7 @@ export function useMapOverlayRenderer({
       .setLngLat(lngLat);
 
     marker.on('dragstart', () => {
+      isDraggingRef.current = true;
       dragStartRef.current = marker.getLngLat();
     });
 
@@ -206,19 +223,20 @@ export function useMapOverlayRenderer({
       const pos = marker.getLngLat();
       const deltaLat = pos.lat - dragStartRef.current.lat;
       const deltaLng = pos.lng - dragStartRef.current.lng;
-      onMoveDrag(deltaLat, deltaLng);
+      onMoveDragRef.current(deltaLat, deltaLng);
       dragStartRef.current = pos;
     });
 
     marker.on('dragend', () => {
+      isDraggingRef.current = false;
       dragStartRef.current = null;
     });
 
     return marker;
-  }, [onMoveDrag]);
+  }, []);
 
-  // Update markers based on drag mode
-  const updateMarkers = useCallback(() => {
+  // Create markers - only when drag mode or lock status changes
+  const createMarkers = useCallback(() => {
     if (!map || !overlay) {
       // Remove all markers
       markersRef.current.forEach(m => m.remove());
@@ -259,7 +277,30 @@ export function useMapOverlayRenderer({
       marker.addTo(map);
       markersRef.current.set('center', marker);
     }
-  }, [map, overlay, dragMode, createCornerMarker, createCenterMarker]);
+  }, [map, dragMode, overlay?.isLocked, overlay?.boundingBox, createCornerMarker, createCenterMarker]);
+
+  // Update marker positions without recreating them - used during drag
+  const updateMarkerPositions = useCallback(() => {
+    if (!overlay || isDraggingRef.current) return;
+    
+    const { north, south, east, west } = overlay.boundingBox;
+    const hasValidBounds = north > south && east > west;
+    
+    if (!hasValidBounds) return;
+
+    // Update corner markers if they exist
+    markersRef.current.get('nw')?.setLngLat([west, north]);
+    markersRef.current.get('ne')?.setLngLat([east, north]);
+    markersRef.current.get('sw')?.setLngLat([west, south]);
+    markersRef.current.get('se')?.setLngLat([east, south]);
+    
+    // Update center marker if it exists
+    if (markersRef.current.has('center')) {
+      const centerLat = (north + south) / 2;
+      const centerLng = (east + west) / 2;
+      markersRef.current.get('center')?.setLngLat([centerLng, centerLat]);
+    }
+  }, [overlay?.boundingBox.north, overlay?.boundingBox.south, overlay?.boundingBox.east, overlay?.boundingBox.west]);
 
   // Effect: Update overlay layer when overlay changes
   useEffect(() => {
@@ -271,10 +312,15 @@ export function useMapOverlayRenderer({
     updateGhostLayer();
   }, [updateGhostLayer]);
 
-  // Effect: Update markers when drag mode changes
+  // Effect: Create/remove markers when drag mode or lock status changes
   useEffect(() => {
-    updateMarkers();
-  }, [updateMarkers]);
+    createMarkers();
+  }, [map, dragMode, overlay?.isLocked]);
+
+  // Effect: Update marker positions when bounds change (without recreating)
+  useEffect(() => {
+    updateMarkerPositions();
+  }, [overlay?.boundingBox.north, overlay?.boundingBox.south, overlay?.boundingBox.east, overlay?.boundingBox.west]);
 
   // Effect: Add error handler for image loading failures
   useEffect(() => {
@@ -317,7 +363,8 @@ export function useMapOverlayRenderer({
 
   return {
     updateOverlayLayer,
-    updateMarkers,
+    createMarkers,
+    updateMarkerPositions,
     updateGhostLayer,
   };
 }
