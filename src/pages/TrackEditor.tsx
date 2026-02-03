@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -47,15 +47,22 @@ export default function TrackEditor() {
     return () => clearTimeout(timeout);
   }, [mapRef, selectedTrack]);
 
-  // Corner drag handler
-  const handleCornerDrag = useCallback((corner: CornerHandle, lat: number, lng: number) => {
-    overlayEditor.handleCornerDrag(corner, lat, lng);
-  }, [overlayEditor]);
+  // Use refs for stable callback references - prevents marker recreation on every render
+  const handleCornerDragRef = useRef(overlayEditor.handleCornerDrag);
+  handleCornerDragRef.current = overlayEditor.handleCornerDrag;
+  
+  const handleMoveDragRef = useRef(overlayEditor.handleMoveDrag);
+  handleMoveDragRef.current = overlayEditor.handleMoveDrag;
 
-  // Move drag handler
+  // Stable corner drag handler
+  const handleCornerDrag = useCallback((corner: CornerHandle, lat: number, lng: number) => {
+    handleCornerDragRef.current(corner, lat, lng);
+  }, []);
+
+  // Stable move drag handler
   const handleMoveDrag = useCallback((deltaLat: number, deltaLng: number) => {
-    overlayEditor.handleMoveDrag(deltaLat, deltaLng);
-  }, [overlayEditor]);
+    handleMoveDragRef.current(deltaLat, deltaLng);
+  }, []);
 
   // Center on venue handler
   const handleCenterOnVenue = useCallback(() => {
