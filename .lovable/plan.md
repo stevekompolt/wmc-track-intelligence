@@ -277,3 +277,27 @@ The engine continues to live in your Git repo, deployed by Lovable, maintained b
 | `src/lib/cameraRenderers.ts` | ✅ Created with MapboxRenderer and CesiumRenderer stubs |
 | `src/hooks/useCameraEngine.ts` | ✅ Added orbitAroundTarget method |
 
+---
+
+## Map Overlay Editor (Completed)
+
+A 2D ground overlay editor for placing venue diagrams over the map.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `src/types/overlay.ts` | MapOverlay data model, BoundingBox, validation |
+| `src/hooks/useOverlayEditor.ts` | Editor state, autosave, undo, drag handlers |
+| `src/hooks/useMapOverlayRenderer.ts` | Mapbox image source + corner/move markers |
+| `src/components/editor/OverlayEditorPanel.tsx` | Right-panel UI with all controls |
+
+### Features
+
+- **Overlay Asset**: Image upload (PNG/SVG), preview, URL copy
+- **Placement Controls**: North/South/East/West inputs, Center/Fit/Reset buttons
+- **Visual Controls**: Opacity slider, Z-order, Fan/Media/Ops visibility toggles
+- **Interaction Tools**: Corner drag handles, move mode, lock toggle
+- **Metadata**: Name, description, Draft/Published/Archived status
+- **Autosave**: 1-second debounce with "Saved" confirmation
+- **Undo**: Single-step undo support
