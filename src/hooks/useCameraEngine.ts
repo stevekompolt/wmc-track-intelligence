@@ -5,27 +5,38 @@ import type {
   CameraEngineState, 
   TransitionOptions,
   DriftConfig,
-  DEFAULT_DRIFT_CONFIG,
-  DEFAULT_CAMERA_CONSTRAINTS,
-  DEFAULT_EASING_PROFILE
+  OrbitConfig,
+  LookAtTarget,
+  CameraConstraints,
 } from '@/types/camera';
 import { 
   cinematicEase, 
   interpolateCamera, 
   calculateDriftOffset,
   greatCircleDistance,
-  calculateDuration
+  calculateDuration,
+  calculateOrbitPosition,
+  calculateRangeFromPitch,
+  normalizePitch,
 } from '@/lib/cameraEasing';
 import { validateViewpoint } from '@/lib/cameraPathCalculator';
 
 interface CameraEngineOptions {
   onCameraUpdate: (state: CameraState) => void;
-  constraints?: typeof DEFAULT_CAMERA_CONSTRAINTS;
+  constraints?: CameraConstraints;
   driftConfig?: DriftConfig;
 }
 
 interface CameraEngineReturn {
   flyToTarget: (target: CameraTarget, options?: TransitionOptions) => void;
+  orbitAroundTarget: (
+    target: LookAtTarget,
+    startHeading: number,
+    pitch: number,
+    range: number,
+    config?: Partial<OrbitConfig>,
+    options?: TransitionOptions
+  ) => void;
   cancelAnimation: () => void;
   startDrift: () => void;
   stopDrift: () => void;
@@ -41,11 +52,17 @@ const defaultDriftConfig: DriftConfig = {
   pitchPeriod: 15000,
 };
 
-const defaultConstraints = {
+const defaultConstraints: CameraConstraints = {
   minZoom: 8,
   maxZoom: 20,
   maxPitch: 75,
   maxRoll: 5,
+};
+
+const defaultOrbitConfig: OrbitConfig = {
+  maxArc: 15,
+  speed: 2,
+  direction: 'cw',
 };
 
 export function useCameraEngine(options: CameraEngineOptions): CameraEngineReturn {
@@ -72,6 +89,13 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
   const optionsRef = useRef<TransitionOptions>({});
   const driftStartRef = useRef<number>(0);
   const driftBaseRef = useRef<CameraState | null>(null);
+  
+  // Orbit-specific refs
+  const orbitTargetRef = useRef<LookAtTarget | null>(null);
+  const orbitBaseHeadingRef = useRef<number>(0);
+  const orbitPitchRef = useRef<number>(0);
+  const orbitRangeRef = useRef<number>(0);
+  const orbitConfigRef = useRef<OrbitConfig>(defaultOrbitConfig);
   
   // Update ref when state changes
   const updateEngineState = useCallback((newState: CameraEngineState) => {
@@ -120,6 +144,51 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
       optionsRef.current.onComplete?.();
     }
   }, [onCameraUpdate, constraints, updateEngineState]);
+  
+  // Orbit animation loop
+  const orbitLoop = useCallback((timestamp: number) => {
+    if (!orbitTargetRef.current) return;
+    
+    const elapsed = timestamp - animationStartRef.current;
+    const duration = animationDurationRef.current;
+    const rawProgress = Math.min(elapsed / duration, 1);
+    
+    // Calculate position on orbit arc
+    const orbitPos = calculateOrbitPosition(
+      orbitTargetRef.current,
+      orbitRangeRef.current,
+      orbitBaseHeadingRef.current,
+      rawProgress,
+      orbitConfigRef.current
+    );
+    
+    // Create camera state looking at target
+    const orbitedCamera: CameraState = {
+      latitude: orbitPos.latitude,
+      longitude: orbitPos.longitude,
+      height: orbitRangeRef.current / 1000, // Convert to zoom-like value
+      heading: orbitPos.heading,
+      pitch: normalizePitch(orbitPitchRef.current, 'mapbox', constraints),
+      roll: 0,
+    };
+    
+    currentCameraRef.current = orbitedCamera;
+    onCameraUpdate(orbitedCamera);
+    setProgress(rawProgress);
+    
+    // Call progress callback
+    optionsRef.current.onProgress?.(rawProgress);
+    
+    // Continue or complete
+    if (rawProgress < 1) {
+      animationRef.current = requestAnimationFrame(orbitLoop);
+    } else {
+      updateEngineState('idle');
+      setProgress(1);
+      optionsRef.current.onComplete?.();
+    }
+  }, [onCameraUpdate, constraints, updateEngineState]);
+  
   // Drift animation loop
   const driftLoop = useCallback((timestamp: number) => {
     if (!driftBaseRef.current) return;
@@ -198,6 +267,39 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
     animationRef.current = requestAnimationFrame(animationLoop);
   }, [animationLoop, updateEngineState]);
   
+  // Orbit around target
+  const orbitAroundTarget = useCallback((
+    target: LookAtTarget,
+    startHeading: number,
+    pitch: number,
+    range: number,
+    config: Partial<OrbitConfig> = {},
+    transitionOptions: TransitionOptions = {}
+  ) => {
+    // Cancel any existing animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+    
+    // Store orbit parameters
+    orbitTargetRef.current = target;
+    orbitBaseHeadingRef.current = startHeading;
+    orbitPitchRef.current = pitch;
+    orbitRangeRef.current = range;
+    orbitConfigRef.current = { ...defaultOrbitConfig, ...config };
+    
+    // Calculate duration from arc and speed
+    const arcDuration = (orbitConfigRef.current.maxArc / orbitConfigRef.current.speed) * 1000;
+    animationDurationRef.current = transitionOptions.duration || arcDuration;
+    optionsRef.current = transitionOptions;
+    
+    // Start orbit animation
+    updateEngineState('orbiting');
+    setProgress(0);
+    animationStartRef.current = performance.now();
+    animationRef.current = requestAnimationFrame(orbitLoop);
+  }, [orbitLoop, updateEngineState]);
+  
   // Cancel animation
   const cancelAnimation = useCallback(() => {
     if (animationRef.current) {
@@ -240,6 +342,7 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
   
   return {
     flyToTarget,
+    orbitAroundTarget,
     cancelAnimation,
     startDrift,
     stopDrift,
