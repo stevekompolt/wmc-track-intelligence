@@ -4,14 +4,16 @@ import type {
   OverlayEditorState, 
   BoundingBox, 
   CornerHandle,
-  OverlayStatus 
+  OverlayStatus,
+  SnapSource,
+  VenueCoords
 } from '@/types/overlay';
-import { createDefaultOverlay, isValidBoundingBox } from '@/types/overlay';
+import { createDefaultOverlay, isValidBoundingBox, calculateSnapBounds, getImageAspectRatio } from '@/types/overlay';
 import { useToast } from '@/hooks/use-toast';
 
 const MAX_UNDO_STACK = 10;
 
-export function useOverlayEditor(venueId: string | undefined) {
+export function useOverlayEditor(venueId: string | undefined, venueCoords?: VenueCoords | null) {
   const { toast } = useToast();
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -23,6 +25,8 @@ export function useOverlayEditor(venueId: string | undefined) {
     activeCorner: null,
     lastSaved: null,
     undoStack: [],
+    ghostBounds: null,
+    isPreviewingSnap: false,
   });
 
   // Push to undo stack before making changes
@@ -50,18 +54,27 @@ export function useOverlayEditor(venueId: string | undefined) {
     }));
   }, [state.undoStack]);
 
-  // Create new overlay
-  const createOverlay = useCallback(() => {
+  // Create new overlay with auto-fit to venue
+  const createOverlay = useCallback(async () => {
     if (!venueId) return;
     const newOverlay = createDefaultOverlay(venueId);
+    
+    // If we have venue coords, pre-position at venue center
+    if (venueCoords) {
+      const bounds = calculateSnapBounds(venueCoords, 1, 0.015);
+      newOverlay.boundingBox = bounds;
+    }
+    
     setState(prev => ({
       ...prev,
       overlay: newOverlay,
       isDirty: true,
       isEditing: true,
       undoStack: [],
+      ghostBounds: null,
+      isPreviewingSnap: false,
     }));
-  }, [venueId]);
+  }, [venueId, venueCoords]);
 
   // Load existing overlay
   const loadOverlay = useCallback((overlay: MapOverlay) => {
@@ -73,6 +86,8 @@ export function useOverlayEditor(venueId: string | undefined) {
       activeCorner: null,
       lastSaved: null,
       undoStack: [],
+      ghostBounds: null,
+      isPreviewingSnap: false,
     });
   }, []);
 
@@ -115,10 +130,49 @@ export function useOverlayEditor(venueId: string | undefined) {
     updateOverlay({ boundingBox: newBox });
   }, [state.overlay, updateOverlay]);
 
-  // Set image URL
-  const setImageUrl = useCallback((url: string) => {
-    updateOverlay({ imageUrl: url });
-  }, [updateOverlay]);
+  // Set image URL with auto-fit
+  const setImageUrl = useCallback(async (url: string) => {
+    if (!venueCoords || !url) {
+      updateOverlay({ imageUrl: url });
+      return;
+    }
+
+    // Get aspect ratio and auto-fit to venue bounds
+    const aspectRatio = await getImageAspectRatio(url);
+    const bounds = calculateSnapBounds(venueCoords, aspectRatio, 0.015);
+    
+    pushUndo();
+    setState(prev => {
+      if (!prev.overlay) return prev;
+      
+      const updated = { 
+        ...prev.overlay, 
+        imageUrl: url,
+        boundingBox: bounds,
+      };
+      
+      // Schedule autosave
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = setTimeout(() => {
+        console.log('Autosaving overlay:', updated);
+        setState(s => ({ ...s, isDirty: false, lastSaved: new Date() }));
+        toast({
+          description: 'Saved',
+          duration: 1500,
+        });
+      }, 1000);
+      
+      return {
+        ...prev,
+        overlay: updated,
+        isDirty: true,
+        ghostBounds: null,
+        isPreviewingSnap: false,
+      };
+    });
+  }, [venueCoords, pushUndo, toast]);
 
   // Toggle editing mode
   const setEditing = useCallback((editing: boolean) => {
@@ -229,6 +283,65 @@ export function useOverlayEditor(venueId: string | undefined) {
     updateOverlay({ status });
   }, [updateOverlay]);
 
+  // Set snap source
+  const setSnapSource = useCallback((snapSource: SnapSource) => {
+    updateOverlay({ snapSource });
+  }, [updateOverlay]);
+
+  // Set auto fit on load
+  const setAutoFitOnLoad = useCallback((autoFitOnLoad: boolean) => {
+    updateOverlay({ autoFitOnLoad });
+  }, [updateOverlay]);
+
+  // Preview snap (show ghost bounds)
+  const previewSnap = useCallback(async (source: SnapSource) => {
+    if (!venueCoords || source === 'none' || !state.overlay?.imageUrl) {
+      setState(prev => ({ ...prev, ghostBounds: null, isPreviewingSnap: false }));
+      return;
+    }
+
+    const aspectRatio = await getImageAspectRatio(state.overlay.imageUrl);
+    const bounds = calculateSnapBounds(venueCoords, aspectRatio, 0.015);
+    
+    setState(prev => ({
+      ...prev,
+      ghostBounds: bounds,
+      isPreviewingSnap: true,
+    }));
+  }, [venueCoords, state.overlay?.imageUrl]);
+
+  // Commit snap (apply ghost bounds)
+  const commitSnap = useCallback(() => {
+    if (!state.ghostBounds) return;
+    
+    updateOverlay({ boundingBox: state.ghostBounds });
+    setState(prev => ({
+      ...prev,
+      ghostBounds: null,
+      isPreviewingSnap: false,
+    }));
+  }, [state.ghostBounds, updateOverlay]);
+
+  // Re-snap with current snap source
+  const reSnap = useCallback(async () => {
+    if (!venueCoords || !state.overlay?.imageUrl || state.overlay.snapSource === 'none') return;
+
+    const aspectRatio = await getImageAspectRatio(state.overlay.imageUrl);
+    const bounds = calculateSnapBounds(venueCoords, aspectRatio, 0.015);
+    
+    updateOverlay({ boundingBox: bounds });
+  }, [venueCoords, state.overlay?.imageUrl, state.overlay?.snapSource, updateOverlay]);
+
+  // Reset to free placement
+  const resetToFree = useCallback(() => {
+    updateOverlay({ snapSource: 'none' });
+    setState(prev => ({
+      ...prev,
+      ghostBounds: null,
+      isPreviewingSnap: false,
+    }));
+  }, [updateOverlay]);
+
   // Validation
   const canSave = state.overlay ? (
     state.overlay.imageUrl.length > 0 &&
@@ -245,6 +358,8 @@ export function useOverlayEditor(venueId: string | undefined) {
     lastSaved: state.lastSaved,
     canUndo: state.undoStack.length > 0,
     canSave,
+    ghostBounds: state.ghostBounds,
+    isPreviewingSnap: state.isPreviewingSnap,
     
     // Actions
     createOverlay,
@@ -262,5 +377,12 @@ export function useOverlayEditor(venueId: string | undefined) {
     toggleLock,
     setStatus,
     undo,
+    // Snapping
+    setSnapSource,
+    setAutoFitOnLoad,
+    previewSnap,
+    commitSnap,
+    reSnap,
+    resetToFree,
   };
 }

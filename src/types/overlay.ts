@@ -9,6 +9,16 @@ export interface BoundingBox {
 
 export type OverlayStatus = 'draft' | 'published' | 'archived';
 
+// Snapping source options
+export type SnapSource = 
+  | 'none'           // Free placement
+  | 'venue_bounds'   // Track center + configurable span
+  | 'geometry'       // Target polygon bounding box
+  | 'element'        // Target venue element bounds
+  | 'viewpoint'      // Frame from viewpoint camera
+  | 'previous'       // Copy from another overlay
+  | 'image_metadata'; // Extract geo from image EXIF
+
 export interface MapOverlay {
   id: string;
   venueId: string;
@@ -20,6 +30,14 @@ export interface MapOverlay {
   
   // Placement
   boundingBox: BoundingBox;
+  
+  // Snapping
+  snapSource: SnapSource;
+  targetElementId?: string;
+  targetGeometryId?: string;
+  targetViewpointId?: string;
+  autoFitOnLoad: boolean;
+  rotation: number; // 0-360 degrees
   
   // Visual
   opacity: number; // 0-1
@@ -47,6 +65,9 @@ export interface OverlayEditorState {
   activeCorner: CornerHandle | null;
   lastSaved: Date | null;
   undoStack: MapOverlay[];
+  // Ghost preview for snapping
+  ghostBounds: BoundingBox | null;
+  isPreviewingSnap: boolean;
 }
 
 export type CornerHandle = 'nw' | 'ne' | 'sw' | 'se';
@@ -55,6 +76,12 @@ export interface OverlayDragEvent {
   corner?: CornerHandle;
   latitude: number;
   longitude: number;
+}
+
+// Venue coordinates for snapping
+export interface VenueCoords {
+  lat: number;
+  lng: number;
 }
 
 // Default overlay for new creation
@@ -71,6 +98,9 @@ export function createDefaultOverlay(venueId: string): MapOverlay {
       east: 0,
       west: 0,
     },
+    snapSource: 'venue_bounds', // Default to auto-snap
+    autoFitOnLoad: true,
+    rotation: 0,
     opacity: 0.85,
     zOrder: 0,
     visibleToFans: true,
@@ -99,4 +129,32 @@ export function getBoundingBoxCenter(box: BoundingBox): { lat: number; lng: numb
     lat: (box.north + box.south) / 2,
     lng: (box.east + box.west) / 2,
   };
+}
+
+// Calculate snap bounds from venue center and aspect ratio
+export function calculateSnapBounds(
+  venue: VenueCoords,
+  aspectRatio: number = 1,
+  span: number = 0.015,
+  padding: number = 1.0
+): BoundingBox {
+  const latSpan = span;
+  const lngSpan = span * aspectRatio;
+  
+  return {
+    north: venue.lat + (latSpan / 2) * padding,
+    south: venue.lat - (latSpan / 2) * padding,
+    east: venue.lng + (lngSpan / 2) * padding,
+    west: venue.lng - (lngSpan / 2) * padding,
+  };
+}
+
+// Get image aspect ratio
+export async function getImageAspectRatio(url: string): Promise<number> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img.naturalWidth / img.naturalHeight);
+    img.onerror = () => resolve(1); // fallback to square
+    img.src = url;
+  });
 }

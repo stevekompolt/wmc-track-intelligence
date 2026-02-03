@@ -11,11 +11,11 @@ import {
   GripHorizontal,
   Lock,
   Unlock,
-  Eye,
-  EyeOff,
   Save,
   Undo2,
-  Layers
+  Layers,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,8 +34,10 @@ import {
 } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import type { MapOverlay, BoundingBox, OverlayStatus } from '@/types/overlay';
+import { SnapSourceSelector } from './SnapSourceSelector';
+import type { MapOverlay, BoundingBox, OverlayStatus, SnapSource } from '@/types/overlay';
 
 interface OverlayEditorPanelProps {
   overlay: MapOverlay | null;
@@ -45,6 +47,7 @@ interface OverlayEditorPanelProps {
   canUndo: boolean;
   canSave: boolean;
   lastSaved: Date | null;
+  isPreviewingSnap?: boolean;
   onUpdateOverlay: (updates: Partial<MapOverlay>) => void;
   onUpdateBoundingBox: (box: Partial<BoundingBox>) => void;
   onSetImageUrl: (url: string) => void;
@@ -57,6 +60,12 @@ interface OverlayEditorPanelProps {
   onSetStatus: (status: OverlayStatus) => void;
   onUndo: () => void;
   onCreateOverlay: () => void;
+  // Snapping callbacks
+  onSetSnapSource?: (source: SnapSource) => void;
+  onSetAutoFitOnLoad?: (enabled: boolean) => void;
+  onSnapNow?: () => void;
+  onReSnap?: () => void;
+  onResetToFree?: () => void;
 }
 
 export function OverlayEditorPanel({
@@ -67,6 +76,7 @@ export function OverlayEditorPanel({
   canUndo,
   canSave,
   lastSaved,
+  isPreviewingSnap = false,
   onUpdateOverlay,
   onUpdateBoundingBox,
   onSetImageUrl,
@@ -79,8 +89,14 @@ export function OverlayEditorPanel({
   onSetStatus,
   onUndo,
   onCreateOverlay,
+  onSetSnapSource,
+  onSetAutoFitOnLoad,
+  onSnapNow,
+  onReSnap,
+  onResetToFree,
 }: OverlayEditorPanelProps) {
   const [copied, setCopied] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -116,6 +132,8 @@ export function OverlayEditorPanel({
       </div>
     );
   }
+
+  const hasValidImage = overlay.imageUrl.length > 0;
 
   return (
     <ScrollArea className="h-full">
@@ -214,92 +232,29 @@ export function OverlayEditorPanel({
 
         <Separator />
 
-        {/* Section 2: Placement Controls */}
-        <section className="space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Placement
-          </h3>
-          
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">North</Label>
-              <Input
-                type="number"
-                step="0.000001"
-                value={formatCoordinate(overlay.boundingBox.north)}
-                onChange={(e) => onUpdateBoundingBox({ north: parseFloat(e.target.value) || 0 })}
-                className="text-xs font-mono"
-                disabled={overlay.isLocked}
+        {/* Section 2: Snapping Controls (NEW - Primary UX) */}
+        {onSetSnapSource && (
+          <>
+            <section className="space-y-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Snapping
+              </h3>
+              <SnapSourceSelector
+                snapSource={overlay.snapSource || 'venue_bounds'}
+                autoFitOnLoad={overlay.autoFitOnLoad ?? true}
+                isLocked={overlay.isLocked}
+                isPreviewingSnap={isPreviewingSnap}
+                hasValidImage={hasValidImage}
+                onSnapSourceChange={onSetSnapSource}
+                onAutoFitChange={onSetAutoFitOnLoad || (() => {})}
+                onSnapNow={onSnapNow || (() => {})}
+                onReSnap={onReSnap || (() => {})}
+                onResetToFree={onResetToFree || (() => {})}
               />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">South</Label>
-              <Input
-                type="number"
-                step="0.000001"
-                value={formatCoordinate(overlay.boundingBox.south)}
-                onChange={(e) => onUpdateBoundingBox({ south: parseFloat(e.target.value) || 0 })}
-                className="text-xs font-mono"
-                disabled={overlay.isLocked}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">East</Label>
-              <Input
-                type="number"
-                step="0.000001"
-                value={formatCoordinate(overlay.boundingBox.east)}
-                onChange={(e) => onUpdateBoundingBox({ east: parseFloat(e.target.value) || 0 })}
-                className="text-xs font-mono"
-                disabled={overlay.isLocked}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">West</Label>
-              <Input
-                type="number"
-                step="0.000001"
-                value={formatCoordinate(overlay.boundingBox.west)}
-                onChange={(e) => onUpdateBoundingBox({ west: parseFloat(e.target.value) || 0 })}
-                className="text-xs font-mono"
-                disabled={overlay.isLocked}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="flex-1"
-              onClick={onCenterOnVenue}
-              disabled={overlay.isLocked}
-            >
-              <Crosshair className="h-3 w-3 mr-1" />
-              Center
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="flex-1"
-              onClick={onFitToVenueBounds}
-              disabled={overlay.isLocked}
-            >
-              <Maximize2 className="h-3 w-3 mr-1" />
-              Fit
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={onResetPlacement}
-              disabled={overlay.isLocked || !canUndo}
-            >
-              <RotateCcw className="h-3 w-3" />
-            </Button>
-          </div>
-        </section>
-
-        <Separator />
+            </section>
+            <Separator />
+          </>
+        )}
 
         {/* Section 3: Visual Controls */}
         <section className="space-y-3">
@@ -467,6 +422,103 @@ export function OverlayEditorPanel({
 
         <Separator />
 
+        {/* Section 6: Advanced Placement (Collapsible) */}
+        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="w-full justify-between">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Advanced Placement
+              </span>
+              {advancedOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-3 pt-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">North</Label>
+                <Input
+                  type="number"
+                  step="0.000001"
+                  value={formatCoordinate(overlay.boundingBox.north)}
+                  onChange={(e) => onUpdateBoundingBox({ north: parseFloat(e.target.value) || 0 })}
+                  className="text-xs font-mono"
+                  disabled={overlay.isLocked}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">South</Label>
+                <Input
+                  type="number"
+                  step="0.000001"
+                  value={formatCoordinate(overlay.boundingBox.south)}
+                  onChange={(e) => onUpdateBoundingBox({ south: parseFloat(e.target.value) || 0 })}
+                  className="text-xs font-mono"
+                  disabled={overlay.isLocked}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">East</Label>
+                <Input
+                  type="number"
+                  step="0.000001"
+                  value={formatCoordinate(overlay.boundingBox.east)}
+                  onChange={(e) => onUpdateBoundingBox({ east: parseFloat(e.target.value) || 0 })}
+                  className="text-xs font-mono"
+                  disabled={overlay.isLocked}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">West</Label>
+                <Input
+                  type="number"
+                  step="0.000001"
+                  value={formatCoordinate(overlay.boundingBox.west)}
+                  onChange={(e) => onUpdateBoundingBox({ west: parseFloat(e.target.value) || 0 })}
+                  className="text-xs font-mono"
+                  disabled={overlay.isLocked}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="flex-1"
+                onClick={onCenterOnVenue}
+                disabled={overlay.isLocked}
+              >
+                <Crosshair className="h-3 w-3 mr-1" />
+                Center
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="flex-1"
+                onClick={onFitToVenueBounds}
+                disabled={overlay.isLocked}
+              >
+                <Maximize2 className="h-3 w-3 mr-1" />
+                Fit
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={onResetPlacement}
+                disabled={overlay.isLocked || !canUndo}
+              >
+                <RotateCcw className="h-3 w-3" />
+              </Button>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
+        <Separator />
+
         {/* Actions */}
         <div className="flex gap-2">
           <Button
@@ -494,9 +546,9 @@ export function OverlayEditorPanel({
             ⚠ Image is required
           </p>
         )}
-        {!canSave && overlay.boundingBox.north <= overlay.boundingBox.south && (
-          <p className="text-xs text-destructive">
-            ⚠ Invalid bounding box
+        {overlay.imageUrl && overlay.boundingBox.north <= overlay.boundingBox.south && (
+          <p className="text-xs text-amber-500">
+            ⚠ Positioning overlay...
           </p>
         )}
       </div>

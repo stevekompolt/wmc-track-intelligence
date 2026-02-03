@@ -1,11 +1,12 @@
 import { useEffect, useRef, useCallback } from 'react';
 import mapboxgl, { Marker, LngLatLike } from 'mapbox-gl';
-import type { MapOverlay, CornerHandle } from '@/types/overlay';
+import type { MapOverlay, CornerHandle, BoundingBox } from '@/types/overlay';
 
 interface UseMapOverlayRendererOptions {
   map: mapboxgl.Map | null;
   overlay: MapOverlay | null;
   dragMode: 'none' | 'corners' | 'move';
+  ghostBounds?: BoundingBox | null;
   onCornerDrag: (corner: CornerHandle, lat: number, lng: number) => void;
   onMoveDrag: (deltaLat: number, deltaLng: number) => void;
 }
@@ -34,12 +35,15 @@ export function useMapOverlayRenderer({
   map,
   overlay,
   dragMode,
+  ghostBounds,
   onCornerDrag,
   onMoveDrag,
 }: UseMapOverlayRendererOptions) {
   const markersRef = useRef<globalThis.Map<string, Marker>>(new globalThis.Map());
   const sourceId = 'overlay-image';
   const layerId = 'overlay-layer';
+  const ghostSourceId = 'overlay-ghost';
+  const ghostLayerId = 'overlay-ghost-layer';
   const dragStartRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Add/update overlay image source and layer
@@ -48,8 +52,10 @@ export function useMapOverlayRenderer({
 
     const { north, south, east, west } = overlay.boundingBox;
     
-    // Validate coordinates
-    if (north <= south || east <= west) return;
+    // Allow rendering even with zero bounds (will be invisible until positioned)
+    const hasValidBounds = north > south && east > west;
+    
+    if (!hasValidBounds) return;
 
     const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
       [west, north], // top-left
@@ -90,6 +96,69 @@ export function useMapOverlayRenderer({
       map.setPaintProperty(layerId, 'raster-opacity', overlay.opacity);
     }
   }, [map, overlay]);
+
+  // Add/update ghost preview layer
+  const updateGhostLayer = useCallback(() => {
+    if (!map || !overlay?.imageUrl) {
+      // Remove ghost layer if exists
+      if (map) {
+        if (map.getLayer(ghostLayerId)) {
+          map.removeLayer(ghostLayerId);
+        }
+        if (map.getSource(ghostSourceId)) {
+          map.removeSource(ghostSourceId);
+        }
+      }
+      return;
+    }
+
+    if (!ghostBounds) {
+      // Remove ghost layer
+      if (map.getLayer(ghostLayerId)) {
+        map.removeLayer(ghostLayerId);
+      }
+      if (map.getSource(ghostSourceId)) {
+        map.removeSource(ghostSourceId);
+      }
+      return;
+    }
+
+    const { north, south, east, west } = ghostBounds;
+    
+    if (north <= south || east <= west) return;
+
+    const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
+      [west, north],
+      [east, north],
+      [east, south],
+      [west, south],
+    ];
+
+    const source = map.getSource(ghostSourceId) as mapboxgl.ImageSource;
+    
+    if (source) {
+      source.updateImage({
+        url: overlay.imageUrl,
+        coordinates,
+      });
+    } else {
+      map.addSource(ghostSourceId, {
+        type: 'image',
+        url: overlay.imageUrl,
+        coordinates,
+      });
+
+      map.addLayer({
+        id: ghostLayerId,
+        type: 'raster',
+        source: ghostSourceId,
+        paint: {
+          'raster-opacity': 0.5,
+          'raster-fade-duration': 200,
+        },
+      });
+    }
+  }, [map, overlay?.imageUrl, ghostBounds]);
 
   // Create corner markers
   const createCornerMarker = useCallback((
@@ -159,9 +228,14 @@ export function useMapOverlayRenderer({
 
     const { north, south, east, west } = overlay.boundingBox;
     
+    // Check if bounds are valid for showing markers
+    const hasValidBounds = north > south && east > west;
+    
     // Remove existing markers
     markersRef.current.forEach(m => m.remove());
     markersRef.current.clear();
+
+    if (!hasValidBounds) return;
 
     if (dragMode === 'corners' && !overlay.isLocked) {
       // Add corner markers
@@ -192,6 +266,11 @@ export function useMapOverlayRenderer({
     updateOverlayLayer();
   }, [updateOverlayLayer]);
 
+  // Effect: Update ghost layer when ghost bounds change
+  useEffect(() => {
+    updateGhostLayer();
+  }, [updateGhostLayer]);
+
   // Effect: Update markers when drag mode changes
   useEffect(() => {
     updateMarkers();
@@ -210,6 +289,12 @@ export function useMapOverlayRenderer({
         if (map.getSource(sourceId)) {
           map.removeSource(sourceId);
         }
+        if (map.getLayer(ghostLayerId)) {
+          map.removeLayer(ghostLayerId);
+        }
+        if (map.getSource(ghostSourceId)) {
+          map.removeSource(ghostSourceId);
+        }
       }
     };
   }, [map]);
@@ -217,5 +302,6 @@ export function useMapOverlayRenderer({
   return {
     updateOverlayLayer,
     updateMarkers,
+    updateGhostLayer,
   };
 }
