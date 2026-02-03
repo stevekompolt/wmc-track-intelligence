@@ -1,8 +1,13 @@
-import { Layers, MousePointer2 } from 'lucide-react';
+import { useState } from 'react';
+import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog';
 import { useTrackContext } from '@/contexts/TrackContext';
 
 export default function TrackEditor() {
   const { selectedTrack } = useTrackContext();
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
   return (
     <div className="relative h-full pointer-events-none">
@@ -26,12 +31,78 @@ export default function TrackEditor() {
             FEATURE TOOLBOX
           </h2>
         </div>
-        <div className="flex-1 p-3 overflow-auto border-b border-border">
-          <p className="text-xs text-muted-foreground font-mono">
-            {selectedTrack
-              ? 'Drawing tools will be available here'
-              : 'Select a track to begin editing'}
-          </p>
+        <div className="p-3 border-b border-border">
+          {selectedTrack ? (
+            <div className="grid grid-cols-2 gap-2">
+              {/* Add Point - placeholder */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 justify-start gap-2"
+                    disabled
+                  >
+                    <MapPin className="h-4 w-4" />
+                    <span className="text-xs">Point</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Coming soon</TooltipContent>
+              </Tooltip>
+              
+              {/* Add Line - placeholder */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 justify-start gap-2"
+                    disabled
+                  >
+                    <Spline className="h-4 w-4" />
+                    <span className="text-xs">Line</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Coming soon</TooltipContent>
+              </Tooltip>
+              
+              {/* Add Polygon - placeholder */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 justify-start gap-2"
+                    disabled
+                  >
+                    <Hexagon className="h-4 w-4" />
+                    <span className="text-xs">Polygon</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Coming soon</TooltipContent>
+              </Tooltip>
+              
+              {/* Save Viewpoint - functional */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 justify-start gap-2 hover:border-primary hover:text-primary"
+                    onClick={() => setSaveDialogOpen(true)}
+                  >
+                    <Camera className="h-4 w-4" />
+                    <span className="text-xs">Viewpoint</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Save current camera position</TooltipContent>
+              </Tooltip>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground font-mono">
+              Select a track to begin editing
+            </p>
+          )}
         </div>
         
         {/* Feature Inspector */}
@@ -40,7 +111,7 @@ export default function TrackEditor() {
             FEATURE INSPECTOR
           </h2>
         </div>
-        <div className="flex-1 p-3">
+        <div className="flex-1 p-3 overflow-auto">
           <p className="text-xs text-muted-foreground font-mono">
             {selectedTrack
               ? 'Select a feature to view properties'
@@ -48,6 +119,12 @@ export default function TrackEditor() {
           </p>
         </div>
       </div>
+      
+      {/* Save Viewpoint Dialog */}
+      <SaveViewpointDialog 
+        open={saveDialogOpen} 
+        onOpenChange={setSaveDialogOpen} 
+      />
     </div>
   );
 }

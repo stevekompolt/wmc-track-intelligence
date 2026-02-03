@@ -1,10 +1,16 @@
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Map } from 'lucide-react';
-import { TrackMap } from '@/components/editor/TrackMap';
+import { TrackMap, TrackMapHandle } from '@/components/editor/TrackMap';
+import { ViewpointSelector } from '@/components/viewpoints/ViewpointSelector';
+import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog';
 import { useTrackContext } from '@/contexts/TrackContext';
+import { useViewpointContext } from '@/contexts/ViewpointContext';
 
 export function SharedMapContainer() {
   const { selectedTrack } = useTrackContext();
+  const { mapRef } = useViewpointContext();
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
   if (!selectedTrack) {
     return (
@@ -25,11 +31,23 @@ export function SharedMapContainer() {
   }
 
   return (
-    <TrackMap
-      trackName={selectedTrack.name}
-      latitude={selectedTrack.latitude}
-      longitude={selectedTrack.longitude}
-      zoom={selectedTrack.zoom}
-    />
+    <div className="relative w-full h-full">
+      <TrackMap
+        ref={mapRef as React.RefObject<TrackMapHandle>}
+        trackName={selectedTrack.name}
+        latitude={selectedTrack.latitude}
+        longitude={selectedTrack.longitude}
+        zoom={selectedTrack.zoom}
+      />
+      
+      {/* Viewpoint selector - bottom left */}
+      <ViewpointSelector onAddClick={() => setSaveDialogOpen(true)} />
+      
+      {/* Save viewpoint dialog */}
+      <SaveViewpointDialog 
+        open={saveDialogOpen} 
+        onOpenChange={setSaveDialogOpen} 
+      />
+    </div>
   );
 }
