@@ -1,138 +1,179 @@
 
+# Fix Overlay Corner and Move Drag Functionality
 
-# Fix Map Overlay Image Rendering
+## Problem Analysis
 
-## Problem Summary
+The corner handles and move feature are not working because of a **marker recreation loop** that interrupts drag operations.
 
-The overlay image is not appearing on the map due to two issues:
+### What's Happening:
 
-1. **SVG files are not supported** - Mapbox GL JS cannot render SVG images as raster sources
-2. **Blob URLs need conversion** - Mapbox requires fully-decoded image data for reliable rendering
+```text
+User drags corner handle
+        │
+        ▼
+onCornerDrag() called with new position
+        │
+        ▼
+updateOverlay({ boundingBox: newBox })
+        │
+        ▼
+overlay state changes
+        │
+        ▼
+updateMarkers() effect runs (depends on overlay)
+        │
+        ▼
+markersRef.current.forEach(m => m.remove()) ← DESTROYS THE MARKER BEING DRAGGED
+        │
+        ▼
+New markers created, but drag is cancelled
+```
+
+Every time the user drags, the marker they're dragging gets destroyed and recreated, which cancels the drag operation.
 
 ---
 
-## Solution Overview
+## Solution
 
-1. **Remove SVG from accepted formats** - Only accept PNG and JPEG
-2. **Convert uploaded images to data URLs** - More reliable for Mapbox rendering
-3. **Add error handling** - Show user-friendly message when image fails to load
-4. **Add image format validation** - Prevent unsupported formats early
+**Separate marker positions from marker lifecycle.** Only recreate markers when drag mode changes, not when overlay bounds change. During drag, just update marker positions in place.
 
----
+### Changes:
 
-## File Changes
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/components/editor/OverlayEditorPanel.tsx` | Modify | Fix accepted formats, add validation |
-| `src/types/overlay.ts` | Modify | Add image conversion utility |
-| `src/hooks/useMapOverlayRenderer.ts` | Modify | Add error handling for image load failures |
+| File | Change |
+|------|--------|
+| `src/hooks/useMapOverlayRenderer.ts` | Separate marker creation from position updates |
+| `src/pages/TrackEditor.tsx` | Use refs for stable callback references |
 
 ---
 
 ## Implementation Details
 
-### 1. Update File Input to Accept Only PNG/JPEG
+### 1. Split Marker Logic in useMapOverlayRenderer.ts
 
-Remove SVG from accepted formats since Mapbox cannot render it:
+**Current:** Single `updateMarkers` function that recreates markers whenever overlay changes.
+
+**Fixed:** Two separate concerns:
+- `createMarkers()` - Only runs when dragMode changes (create/remove markers)
+- `updateMarkerPositions()` - Only runs when overlay bounds change (reposition existing markers)
+
+### 2. Update Marker Positions Without Recreating
+
+When dragging, update existing marker positions using `marker.setLngLat()` instead of removing and recreating markers:
 
 ```text
-Before: accept="image/png,image/svg+xml"
-After:  accept="image/png,image/jpeg,image/jpg"
+// NEW: Update positions of existing markers
+const updateMarkerPositions = useCallback(() => {
+  if (!overlay) return;
+  const { north, south, east, west } = overlay.boundingBox;
+  
+  // Update corner markers if they exist
+  markersRef.current.get('nw')?.setLngLat([west, north]);
+  markersRef.current.get('ne')?.setLngLat([east, north]);
+  markersRef.current.get('sw')?.setLngLat([west, south]);
+  markersRef.current.get('se')?.setLngLat([east, south]);
+  
+  // Update center marker if it exists
+  const centerLat = (north + south) / 2;
+  const centerLng = (east + west) / 2;
+  markersRef.current.get('center')?.setLngLat([centerLng, centerLat]);
+}, [overlay?.boundingBox]);
 ```
 
-### 2. Convert File to Data URL
-
-Convert blob to base64 data URL for reliable Mapbox rendering:
+### 3. Separate Effects for Lifecycle vs Position
 
 ```text
-const fileToDataUrl = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
+// Effect 1: Create/remove markers when drag mode changes
+useEffect(() => {
+  createMarkers();
+}, [dragMode, overlay?.isLocked]);  // Only these dependencies
+
+// Effect 2: Update positions when bounds change (does NOT recreate markers)
+useEffect(() => {
+  updateMarkerPositions();
+}, [overlay?.boundingBox]);  // Only bounds dependency
 ```
 
-### 3. Add Image Load Error Handler
+### 4. Use Refs for Stable Drag Handlers
 
-Show toast notification when Mapbox fails to load the image:
+In `TrackEditor.tsx`, use refs to maintain stable references to the drag handlers so they don't cause marker recreation:
 
 ```text
-map.on('error', (e) => {
-  if (e.sourceId === 'overlay-image') {
-    toast.error('Failed to load overlay image');
-  }
+// Use refs for stable callback references
+const handleCornerDragRef = useRef(overlayEditor.handleCornerDrag);
+handleCornerDragRef.current = overlayEditor.handleCornerDrag;
+
+const handleMoveDragRef = useRef(overlayEditor.handleMoveDrag);
+handleMoveDragRef.current = overlayEditor.handleMoveDrag;
+
+// Pass stable callbacks to renderer
+const stableCornerDrag = useCallback((corner, lat, lng) => {
+  handleCornerDragRef.current(corner, lat, lng);
+}, []);
+
+const stableMoveDrag = useCallback((deltaLat, deltaLng) => {
+  handleMoveDragRef.current(deltaLat, deltaLng);
+}, []);
+```
+
+### 5. Skip Position Update During Active Drag
+
+Add a flag to prevent updating marker positions while the marker is being dragged (since the user is controlling the position):
+
+```text
+const isDraggingRef = useRef(false);
+
+marker.on('dragstart', () => {
+  isDraggingRef.current = true;
 });
+
+marker.on('dragend', () => {
+  isDraggingRef.current = false;
+});
+
+// In updateMarkerPositions:
+if (isDraggingRef.current) return; // Don't override user's drag position
 ```
 
-### 4. Update Upload Handler
+---
+
+## File Changes Summary
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/hooks/useMapOverlayRenderer.ts` | Modify | Separate marker lifecycle from position updates |
+| `src/pages/TrackEditor.tsx` | Modify | Use stable callback refs for drag handlers |
+
+---
+
+## Technical Details
+
+### Why This Fixes the Problem
+
+**Before:**
+- Every drag event → overlay changes → markers destroyed → drag cancelled
+
+**After:**
+- Drag event → overlay changes → marker positions updated in place → drag continues
+- Markers only created/destroyed when switching drag modes
+
+### Dependencies After Fix
 
 ```text
-const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+createMarkers():
+  dependencies: [map, dragMode, overlay?.isLocked]
   
-  // Validate file type
-  if (!file.type.match(/^image\/(png|jpeg|jpg)$/)) {
-    toast.error('Only PNG and JPEG images are supported');
-    return;
-  }
-  
-  // Convert to data URL for reliable rendering
-  const dataUrl = await fileToDataUrl(file);
-  onSetImageUrl(dataUrl);
-};
-```
-
-### 5. Update UI Help Text
-
-Change upload area text from "PNG/SVG" to "PNG/JPEG":
-
-```text
-Before: "Click to upload PNG/SVG"
-After:  "Click to upload PNG or JPEG"
+updateMarkerPositions():
+  dependencies: [overlay?.boundingBox.north, south, east, west]
+  skips if: isDraggingRef.current === true
 ```
 
 ---
 
-## Technical Notes
+## Expected Behavior After Fix
 
-### Why Data URLs Instead of Blob URLs?
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| Blob URL | Memory efficient | Revoked on page unload, CORS issues |
-| Data URL | Self-contained, reliable | Larger in memory, base64 encoded |
-
-For overlay images (typically < 5MB), data URLs are more reliable.
-
-### Why No SVG Support?
-
-Mapbox GL JS uses WebGL to render `image` sources. SVG requires:
-1. Parsing XML
-2. Rasterizing to canvas
-3. Converting to texture
-
-This is not supported by the `image` source type. A workaround would be to rasterize SVG to canvas first, but that adds complexity. For this use case, requiring PNG/JPEG is simpler.
-
----
-
-## User Experience Changes
-
-1. **Clearer upload guidance** - "PNG or JPEG" instead of "PNG/SVG"
-2. **Validation feedback** - Toast if wrong format is uploaded
-3. **Error recovery** - Toast if Mapbox fails to render
-
----
-
-## Summary
-
-This fix ensures:
-- Only supported image formats are accepted
-- Images are converted to reliable data URLs
-- Users receive clear feedback on errors
-- The overlay renders immediately after upload
-
+1. User uploads image → overlay appears on map
+2. User clicks "Corners" toggle → 4 corner handles appear
+3. User drags a corner → overlay resizes smoothly
+4. User clicks "Move" toggle → center handle appears
+5. User drags center → overlay moves smoothly
+6. All changes autosave after 1 second of inactivity
