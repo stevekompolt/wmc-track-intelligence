@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { TrackProvider } from "@/contexts/TrackContext";
 import { ViewpointProvider } from "@/contexts/ViewpointContext";
+import { CinematicProvider } from "@/contexts/CinematicContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "./pages/Login";
@@ -33,13 +34,15 @@ const App = () => (
             {/* Protected routes with app layout */}
             <Route
               element={
-                <ProtectedRoute>
-                  <TrackProvider>
-                    <ViewpointProvider>
+              <ProtectedRoute>
+                <TrackProvider>
+                  <ViewpointProvider>
+                    <CinematicProvider>
                       <AppLayout />
-                    </ViewpointProvider>
-                  </TrackProvider>
-                </ProtectedRoute>
+                    </CinematicProvider>
+                  </ViewpointProvider>
+                </TrackProvider>
+              </ProtectedRoute>
               }
             >
               <Route path="/" element={<Dashboard />} />

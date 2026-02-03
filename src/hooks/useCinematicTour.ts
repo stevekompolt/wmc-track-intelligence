@@ -10,17 +10,25 @@ function generateTourScenes(viewpoints: Viewpoint[]): TourScene[] {
   // Sort by priority and create scenes
   return fanViewpoints
     .sort((a, b) => a.priority - b.priority)
-    .map((vp, index) => ({
-      id: `scene-${index + 1}`,
-      viewpointId: vp.id,
-      name: vp.name,
-      description: vp.description || `Experience the ${vp.name.toLowerCase()} from this stunning vantage point.`,
-      duration: 10, // 10 seconds per scene
-    }));
+    .map((vp, index, arr) => {
+      // Scene duration based on position
+      const isFirst = index === 0;
+      const isLast = index === arr.length - 1;
+      const duration = isFirst ? 12 : isLast ? 15 : 8;
+      
+      return {
+        id: `scene-${index + 1}`,
+        viewpointId: vp.id,
+        name: vp.name,
+        description: vp.description || `Experience the ${vp.name.toLowerCase()} from this stunning vantage point.`,
+        duration,
+      };
+    });
 }
 
 export function useCinematicTour() {
   const { viewpoints, setActiveViewpoint } = useViewpointContext();
+  
   const [tourState, setTourState] = useState<TourState>('idle');
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
   const [sceneProgress, setSceneProgress] = useState(0);
