@@ -1,361 +1,168 @@
 
 
-# Cinematic Camera Engine Implementation Plan
+# Cinematic Camera Engine Refinement Plan
 
 ## Overview
 
-Create a broadcast-quality camera controller that powers the Fan Preview experience. The engine replaces basic `flyTo` with smooth, cinematic transitions that feel like a film trailer rather than a map navigation tool.
+The Cinematic Camera Engine is already implemented and functional. This plan aligns it more precisely with the Cesium-based camera math specification while maintaining Mapbox compatibility. We'll also add the missing `lookAt` behavior for target elements.
 
 ---
 
-## Architecture
+## Current Architecture (What You Have)
 
 ```text
 +------------------------------------------------------------------+
-|                        CinematicCameraEngine                      |
+|                    Current Implementation                         |
 +------------------------------------------------------------------+
 |                                                                   |
-|  ┌─────────────────┐     ┌──────────────────┐                    |
-|  │  ViewpointData  │────▶│  PathCalculator  │                    |
-|  │  (from API)     │     │  (pre-compute)   │                    |
-|  └─────────────────┘     └────────┬─────────┘                    |
-|                                   │                               |
-|                                   ▼                               |
-|  ┌─────────────────┐     ┌──────────────────┐                    |
-|  │  useCameraEngine│◀────│  AnimationLoop   │                    |
-|  │  (React hook)   │     │  (requestAnimFrame)                   |
-|  └────────┬────────┘     └──────────────────┘                    |
-|           │                                                       |
-|           ▼                                                       |
-|  ┌─────────────────────────────────────────┐                     |
-|  │           TrackMap (Mapbox GL)          │                     |
-|  │  - setCenter(), setZoom(), setBearing() │                     |
-|  │  - Interactions disabled in Fan mode    │                     |
-|  └─────────────────────────────────────────┘                     |
+|  Salesforce                                                       |
+|  ────────────                                                     |
+|  Venue_Viewpoint__c                                               |
+|    - lat / lon / height (degrees, zoom)                           |
+|    - heading / pitch / roll (degrees)                             |
+|    - bounding box                                                 |
+|    - mode visibility                                              |
+|              ↓                                                    |
+|                                                                   |
+|  React Hooks + Context                                            |
+|  ────────────────────                                             |
+|  useCameraEngine.ts ─── cameraEasing.ts                           |
+|         ↓                                                         |
+|  CinematicContext.tsx                                             |
+|         ↓                                                         |
+|                                                                   |
+|  TrackMap (Mapbox GL JS)                                          |
+|  ───────────────────────                                          |
+|  - setCenter(), setZoom(), setBearing(), setPitch()               |
 |                                                                   |
 +------------------------------------------------------------------+
 ```
 
+This is the **correct architecture**. The engine is a shared runtime service that Lovable calls, not implements.
+
 ---
 
-## Core Components
+## Refinements Needed
 
-### 1. Types: `src/types/camera.ts`
+### 1. Pitch Semantics Alignment
 
-New type definitions for the camera engine:
+**Current:** Mapbox uses positive pitch (0° = level, 60° = looking down)
+**Spec:** Cesium uses negative pitch (0° = horizon, -90° = straight down)
 
-| Type | Purpose |
-|------|---------|
-| `CameraTarget` | Extended viewpoint with optional bounding box and target element |
-| `CameraTransition` | Defines a single camera animation with easing and duration |
-| `EasingProfile` | Configurable easing curve (ease-in %, glide %, ease-out %) |
-| `CameraConstraints` | Min altitude, max pitch, roll limits |
-| `CameraEngineState` | Current engine state (animating, idle, drifting) |
+**Solution:** Add pitch direction configuration:
 
 ```text
-CameraTarget {
-  latitude: number
-  longitude: number
-  height: number
-  heading: number
-  pitch: number
-  roll: number
-  boundingBox?: [sw: [lng, lat], ne: [lng, lat]]
-  targetElement?: { id: string, geometry: GeoJSON }
-  sceneType?: 'standard' | 'hero' | 'final'
-}
-
-EasingProfile {
-  easeInPercent: number   // 0.20 (20%)
-  glidePercent: number    // 0.60 (60%)
-  easeOutPercent: number  // 0.20 (20%)
+// In cameraEasing.ts
+function normalizePitch(pitch: number, targetEngine: 'mapbox' | 'cesium'): number {
+  if (targetEngine === 'cesium') {
+    // Cesium: 0 = horizon, -90 = down
+    return Math.max(-75, Math.min(-5, pitch));
+  } else {
+    // Mapbox: 0 = level, 85 = max
+    return Math.abs(Math.max(-75, Math.min(-5, pitch)));
+  }
 }
 ```
 
 ---
 
-### 2. Easing Functions: `src/lib/cameraEasing.ts`
+### 2. Add Target Element LookAt Support
 
-Custom easing curves for cinematic motion:
+**Current:** Not implemented
+**Spec:** When a viewpoint has a Target Element, use `lookAt` behavior
 
-| Function | Purpose |
-|----------|---------|
-| `cinematicEase(t, profile)` | Main easing function with 3-phase profile |
-| `calculateDuration(distance)` | Distance-based duration (6-10 seconds) |
-| `calculateCinematicTilt(progress)` | Subtle 2-4° tilt during approach |
-| `interpolateCamera(start, end, t)` | Smooth camera state interpolation |
-| `greatCircleDistance(p1, p2)` | Calculate distance between viewpoints |
+**Solution:** Add orbit/lookAt mode to the camera engine:
 
-Easing curve implementation:
-- Phase 1 (0-20%): Ease-in using cubic bezier
-- Phase 2 (20-80%): Steady glide (near-linear)
-- Phase 3 (80-100%): Ease-out using cubic bezier
+| File | Change |
+|------|--------|
+| `src/types/camera.ts` | Add `lookAtTarget` and `orbitConfig` to `CameraTarget` |
+| `src/hooks/useCameraEngine.ts` | Add `orbitAroundTarget()` method |
+| `src/lib/cameraEasing.ts` | Add `calculateOrbitPosition()` function |
 
 ---
 
-### 3. Camera Engine Hook: `src/hooks/useCameraEngine.ts`
+### 3. Scene-Specific Pitch Presets
 
-Main hook that orchestrates camera animations:
+Add recommended pitch ranges by scene type:
 
-| Property/Method | Purpose |
-|-----------------|---------|
-| `flyToTarget(target, options)` | Animate to a camera target |
-| `cancelAnimation()` | Gracefully cancel current animation |
-| `startDrift()` | Begin subtle micro-motion when paused |
-| `stopDrift()` | Stop drift motion |
-| `isAnimating` | Current animation state |
-| `progress` | Animation progress (0-1) |
-
-**Animation Loop Logic:**
-- Uses `requestAnimationFrame` for 60fps target
-- Calculates interpolated camera state each frame
-- Applies cinematic tilt during mid-animation
-- Handles interruption by blending to new target
-
-**Drift Motion:**
-- Subtle heading oscillation (±2° over 20s)
-- Gentle pitch variation (±1° over 15s)
-- Uses sine waves for smooth motion
-- Never freezes completely when paused
+| Scene Type | Pitch Range | Description |
+|------------|-------------|-------------|
+| aerial_reveal | -20° to -35° | Wide establishing shot |
+| track_follow | -10° to -25° | Following the action |
+| grandstand_pov | -5° to -15° | Fan perspective |
+| overhead | -45° to -65° | Cinematic bird's eye |
 
 ---
 
-### 4. Extended Map Handle: `src/components/editor/TrackMap.tsx`
+### 4. Add Cesium Renderer Adapter (Future-Proofing)
 
-Extend the imperative handle with new camera methods:
-
-| Method | Purpose |
-|--------|---------|
-| `setCameraState(state)` | Directly set camera without animation |
-| `setInteractionsEnabled(enabled)` | Enable/disable user interactions |
-| `getMapInstance()` | Access raw Mapbox instance for drift |
-
-**Fan Mode Behavior:**
-- Disable `dragPan`, `dragRotate`, `scrollZoom`, `touchZoomRotate`
-- Disable `doubleClickZoom`, `keyboard`
-- Hide navigation controls
-- Map remains visually interactive (hover effects, etc.)
-
----
-
-### 5. Cinematic Context: `src/contexts/CinematicContext.tsx`
-
-Extends ViewpointContext with camera engine integration:
-
-| Property | Purpose |
-|----------|---------|
-| `cameraEngine` | Reference to useCameraEngine hook |
-| `transitionToViewpoint(vp, options)` | Cinematic fly-to with all features |
-| `isDrifting` | Whether camera is in drift mode |
-| `interactionsEnabled` | Whether user can control map |
-
-**Mode-Aware Behavior:**
-- Fan mode: Interactions disabled, drift enabled when paused
-- Other modes: Full interactions, no drift
-
----
-
-### 6. Path Pre-calculation: `src/lib/cameraPathCalculator.ts`
-
-Pre-compute camera paths for tour scenes:
-
-| Function | Purpose |
-|----------|---------|
-| `calculateTourPath(viewpoints)` | Pre-calculate all transitions |
-| `validateViewpoint(vp)` | Check for missing data, apply fallbacks |
-| `frameBoundingBox(bbox, padding)` | Calculate camera for bounding box |
-
-**Validation & Fallbacks:**
-- If viewpoint incomplete: use venue centroid
-- If pitch missing: use 45° default
-- If heading missing: calculate from previous viewpoint
-- Log warnings silently (console.warn)
-
----
-
-## Integration Points
-
-### Tour Hook Integration: `src/hooks/useCinematicTour.ts`
-
-Update to use CinematicContext instead of direct flyTo:
+To support both Mapbox and Cesium from the same engine:
 
 ```text
-Before: setActiveViewpoint(viewpoint)
-After:  transitionToViewpoint(viewpoint, {
-          sceneType: 'standard' | 'hero' | 'final',
-          onComplete: advanceScene
-        })
+interface CameraRenderer {
+  flyTo(target: CameraTarget, options: TransitionOptions): void;
+  lookAt(target: Cartesian3, orientation: HeadingPitchRange): void;
+  setCameraState(state: CameraState): void;
+  getCameraState(): CameraState;
+}
+
+class MapboxRenderer implements CameraRenderer { ... }
+class CesiumRenderer implements CameraRenderer { ... }
 ```
 
-**Scene Duration Mapping:**
-- Standard scene: 8 seconds (matches animation duration)
-- Hero scene: 12-15 seconds
-- Final scene: 15 seconds with slow pull-back
+This abstraction allows the engine to work with either renderer.
 
 ---
 
-### UI Text Fade Coordination
-
-Update FanPreviewPanel to coordinate text with camera:
-
-| Progress | UI Behavior |
-|----------|-------------|
-| 0-30% | Fade out current scene text |
-| 30-70% | Text hidden |
-| 70-100% | Fade in next scene text |
-
----
-
-## File Summary
+## File Changes
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/types/camera.ts` | Create | Camera engine types |
-| `src/lib/cameraEasing.ts` | Create | Easing functions and math |
-| `src/lib/cameraPathCalculator.ts` | Create | Path pre-calculation |
-| `src/hooks/useCameraEngine.ts` | Create | Main camera animation hook |
-| `src/contexts/CinematicContext.tsx` | Create | Cinematic camera context |
-| `src/components/editor/TrackMap.tsx` | Modify | Extended handle, interaction control |
-| `src/hooks/useCinematicTour.ts` | Modify | Use cinematic transitions |
-| `src/components/fan/FanPreviewPanel.tsx` | Modify | Text fade coordination |
-| `src/components/fan/SceneCard.tsx` | Modify | Progress-based fade |
-| `src/pages/FanExperience.tsx` | Modify | Enable cinematic mode |
-| `src/App.tsx` | Modify | Add CinematicProvider |
+| `src/types/camera.ts` | Modify | Add orbit config, lookAt target, pitch presets |
+| `src/lib/cameraEasing.ts` | Modify | Add pitch normalization, orbit calculations |
+| `src/hooks/useCameraEngine.ts` | Modify | Add `orbitAroundTarget()` method |
+| `src/lib/cameraRenderers.ts` | Create | Renderer abstraction (Mapbox + future Cesium) |
+| `src/lib/cameraPresets.ts` | Create | Scene-specific camera presets |
 
 ---
 
-## Camera Constraints
+## Type Additions
 
-Enforced limits to prevent visual issues:
-
-| Constraint | Value | Reason |
-|------------|-------|--------|
-| Min altitude | zoom 10 | Prevent ground collision |
-| Max pitch | -75° | Prevent horizon flip |
-| Roll limit | ±5° | Maintain horizon stability |
-| Min zoom | 8 | Prevent world wrap |
-| Max zoom | 20 | Prevent texture blur |
-
----
-
-## Easing Visualization
+### Extended CameraTarget
 
 ```text
-Speed
-  ▲
-  │    ┌───────────────────────────┐
-  │   ╱                             ╲
-  │  ╱                               ╲
-  │ ╱                                 ╲
-  │╱                                   ╲
-  └─────────────────────────────────────▶ Time
-   0%   20%                      80%  100%
-   
-   ◀─▶  ◀────────────────────────▶  ◀──▶
-   Ease  Steady Glide (60%)         Ease
-   In                                Out
-   (20%)                            (20%)
+interface CameraTarget {
+  // Existing fields...
+  
+  // NEW: Target element for lookAt behavior
+  lookAtTarget?: {
+    latitude: number;
+    longitude: number;
+    height: number;
+  };
+  
+  // NEW: Orbit configuration
+  orbitConfig?: {
+    maxArc: number;      // Max 15 degrees
+    speed: number;       // Degrees per second
+    direction: 'cw' | 'ccw';
+  };
+  
+  // NEW: Scene-specific pitch preset
+  pitchPreset?: 'aerial_reveal' | 'track_follow' | 'grandstand_pov' | 'overhead';
+}
 ```
 
----
-
-## Cinematic Tilt Behavior
-
-During camera transitions:
+### Camera Presets
 
 ```text
-Pitch Offset
-    ▲
- +4°│      ╱╲
- +2°│    ╱    ╲
-  0°├──╱────────╲──────▶ Progress
- -2°│
-    └─────────────────
-    0%   50%      100%
-    
-Approach: slight tilt toward target
-Arrival: level out smoothly
+const CAMERA_PRESETS = {
+  aerial_reveal: { pitchRange: [-35, -20], duration: 10 },
+  track_follow: { pitchRange: [-25, -10], duration: 8 },
+  grandstand_pov: { pitchRange: [-15, -5], duration: 8 },
+  overhead: { pitchRange: [-65, -45], duration: 12 },
+};
 ```
-
----
-
-## Drift Motion Pattern
-
-When tour is paused, camera continues subtle motion:
-
-```text
-Heading Offset (±2° over 20s period)
-    ▲
- +2°│  ╱╲      ╱╲      ╱╲
-  0°├─╱──╲────╱──╲────╱──╲─▶ Time
- -2°│╱    ╲  ╱    ╲  ╱
-    └───────────────────
-    
-Pitch Offset (±1° over 15s period)
-    ▲
- +1°│   ╱╲    ╱╲    ╱╲
-  0°├──╱──╲──╱──╲──╱──╲─▶ Time
- -1°│ ╱    ╲╱    ╲╱
-    └────────────────
-```
-
----
-
-## Interruption Handling
-
-When user clicks a new target during animation:
-
-| Action | Behavior |
-|--------|----------|
-| Scene dot click | Blend from current position to new target |
-| Viewpoint click | Same blend behavior |
-| Pause | Stop animation, start drift |
-| Resume | Blend from drift position to next scene |
-
-**Blend Curve:**
-- Capture current camera state
-- Treat as new "from" position
-- Start new animation with fresh easing
-- No visible snap or jump
-
----
-
-## Day/Night Handling
-
-| Change | Animation |
-|--------|-----------|
-| Map style | 2-second crossfade |
-| Shadows | Fade smoothly (handled by Mapbox) |
-| Camera | No change to position or motion |
-
----
-
-## Performance Considerations
-
-| Optimization | Implementation |
-|--------------|----------------|
-| Pre-calculate paths | On venue load, compute all scene transitions |
-| RAF throttle | Skip frames if behind, maintain timing |
-| State batching | Single setState per frame |
-| No blocking | All math is synchronous, simple arithmetic |
-| Memory | Reuse camera state objects |
-
----
-
-## Design Compliance Checklist
-
-| Requirement | Implementation |
-|-------------|----------------|
-| Camera always animated | Animation loop never stops (drift when idle) |
-| No user pan/zoom/rotate | Interactions disabled in Fan mode |
-| Viewpoint-driven only | All motion from Viewpoint records |
-| Non-linear easing | Custom 3-phase easing curve |
-| No snaps or jumps | Blend interruptions smoothly |
-| 6-10s transitions | Distance-calculated duration |
-| Cinematic tilt | 2-4° during approach |
-| Micro-drift when paused | Sine wave oscillation |
-| 60fps target | requestAnimationFrame loop |
-| Failsafe fallbacks | Venue centroid if data incomplete |
 
 ---
 
@@ -363,16 +170,98 @@ When user clicks a new target during animation:
 
 | Step | Task |
 |------|------|
-| 1 | Create camera types (`src/types/camera.ts`) |
-| 2 | Create easing functions (`src/lib/cameraEasing.ts`) |
-| 3 | Create path calculator (`src/lib/cameraPathCalculator.ts`) |
-| 4 | Create camera engine hook (`src/hooks/useCameraEngine.ts`) |
-| 5 | Update TrackMap with extended handle and interaction control |
-| 6 | Create CinematicContext (`src/contexts/CinematicContext.tsx`) |
-| 7 | Update useCinematicTour to use cinematic transitions |
-| 8 | Update FanPreviewPanel for text fade coordination |
-| 9 | Update SceneCard with progress-based fade |
-| 10 | Update FanExperience to enable cinematic mode |
-| 11 | Update App.tsx with CinematicProvider |
-| 12 | Test end-to-end tour playback |
+| 1 | Add pitch preset types to `camera.ts` |
+| 2 | Add `normalizePitch()` function to `cameraEasing.ts` |
+| 3 | Create `cameraPresets.ts` with scene-specific defaults |
+| 4 | Add lookAt target support to `CameraTarget` type |
+| 5 | Add `orbitAroundTarget()` to `useCameraEngine.ts` |
+| 6 | Create `cameraRenderers.ts` abstraction (optional, for Cesium) |
+| 7 | Update viewpoint mock data with pitch presets |
+
+---
+
+## What Stays the Same
+
+The core architecture is correct and shouldn't change:
+
+| Component | Status |
+|-----------|--------|
+| `useCameraEngine.ts` location | ✅ Correct (React hook) |
+| `cameraEasing.ts` math | ✅ Correct (pure functions) |
+| `CinematicContext.tsx` pattern | ✅ Correct (React context) |
+| Separation from UI | ✅ Correct (Lovable calls, doesn't implement) |
+| Salesforce stores degrees | ✅ Correct |
+| Engine converts for renderer | ✅ Correct |
+
+---
+
+## Governance Rule (Recommendation)
+
+Document and enforce:
+
+> **Lovable may CALL the Cinematic Camera Engine,**
+> **but may not MODIFY camera math or constraints.**
+
+This keeps the engine stable and reusable across modes.
+
+---
+
+## Technical Details
+
+### Orbit Calculation
+
+For target elements with orbit behavior:
+
+```text
+function calculateOrbitPosition(
+  targetLat: number,
+  targetLon: number,
+  distance: number,
+  heading: number,
+  arcProgress: number,
+  maxArc: number
+): { lat: number; lon: number; heading: number } {
+  // Calculate position on arc around target
+  const arcHeading = heading + (arcProgress * maxArc);
+  
+  // Position camera at distance from target, looking at target
+  const lat = targetLat + Math.cos(toRadians(arcHeading)) * (distance / 111); // rough km to degrees
+  const lon = targetLon + Math.sin(toRadians(arcHeading)) * (distance / 111);
+  
+  // Camera heading points at target
+  const cameraHeading = (arcHeading + 180) % 360;
+  
+  return { lat, lon, heading: cameraHeading };
+}
+```
+
+### Pitch Direction Reference
+
+```text
+Mapbox GL JS:
+  0° = looking at horizon
+  85° = looking down (max)
+  Uses POSITIVE values
+
+Cesium:
+  0° = looking at horizon  
+  -90° = looking straight down
+  Uses NEGATIVE values
+
+Conversion:
+  cesiumPitch = -1 * mapboxPitch
+```
+
+---
+
+## Summary
+
+The Cinematic Camera Engine is architecturally correct. This plan adds:
+
+1. **Pitch normalization** for Cesium compatibility
+2. **LookAt/Orbit support** for target elements
+3. **Scene presets** for recommended camera angles
+4. **Renderer abstraction** (optional) for multi-engine support
+
+The engine continues to live in your Git repo, deployed by Lovable, maintained by your team — exactly as specified.
 
