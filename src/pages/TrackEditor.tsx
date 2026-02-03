@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -9,7 +9,7 @@ import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
 import { useOverlayEditor } from '@/hooks/useOverlayEditor';
 import { useMapOverlayRenderer } from '@/hooks/useMapOverlayRenderer';
-import type { CornerHandle } from '@/types/overlay';
+import type { CornerHandle, VenueCoords } from '@/types/overlay';
 import mapboxgl from 'mapbox-gl';
 
 type EditorMode = 'features' | 'overlay';
@@ -21,7 +21,16 @@ export default function TrackEditor() {
   const [editorMode, setEditorMode] = useState<EditorMode>('features');
   const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
 
-  const overlayEditor = useOverlayEditor(selectedTrack?.id);
+  // Memoize venue coordinates to prevent unnecessary re-renders
+  const venueCoords: VenueCoords | null = useMemo(() => {
+    if (!selectedTrack) return null;
+    return {
+      lat: selectedTrack.latitude,
+      lng: selectedTrack.longitude,
+    };
+  }, [selectedTrack?.latitude, selectedTrack?.longitude]);
+
+  const overlayEditor = useOverlayEditor(selectedTrack?.id, venueCoords);
 
   // Get map instance when available
   useEffect(() => {
@@ -72,6 +81,7 @@ export default function TrackEditor() {
     map: mapInstance,
     overlay: overlayEditor.overlay,
     dragMode: overlayEditor.dragMode,
+    ghostBounds: overlayEditor.ghostBounds,
     onCornerDrag: handleCornerDrag,
     onMoveDrag: handleMoveDrag,
   });
@@ -213,6 +223,7 @@ export default function TrackEditor() {
             canUndo={overlayEditor.canUndo}
             canSave={overlayEditor.canSave}
             lastSaved={overlayEditor.lastSaved}
+            isPreviewingSnap={overlayEditor.isPreviewingSnap}
             onUpdateOverlay={overlayEditor.updateOverlay}
             onUpdateBoundingBox={overlayEditor.updateBoundingBox}
             onSetImageUrl={overlayEditor.setImageUrl}
@@ -225,6 +236,11 @@ export default function TrackEditor() {
             onSetStatus={overlayEditor.setStatus}
             onUndo={overlayEditor.undo}
             onCreateOverlay={overlayEditor.createOverlay}
+            onSetSnapSource={overlayEditor.setSnapSource}
+            onSetAutoFitOnLoad={overlayEditor.setAutoFitOnLoad}
+            onSnapNow={overlayEditor.commitSnap}
+            onReSnap={overlayEditor.reSnap}
+            onResetToFree={overlayEditor.resetToFree}
           />
         )}
       </div>
