@@ -1,121 +1,257 @@
 
-# Shared Track Context Across All Views
 
-## Overview
-Create a global track context so that when you select a track in Track Editor, it stays selected when you navigate to Media Intelligence, Event Ops, or Fan Preview. Each view shows the same base map with different mode-specific overlays.
+# Next Step: Viewpoints Foundation + Feature Toolbox
+
+## Current State Summary
+
+| Component | Status |
+|-----------|--------|
+| Map (Mapbox GL JS) | ✅ Implemented with style switcher, flyTo, pitch support |
+| Track Context | ✅ Global track selection with localStorage persistence |
+| Right Panel Structure | ✅ All 4 modes have 72px right panel overlaying map |
+| Feature Toolbox | ⚠️ Placeholder only - no actual tools |
+| Feature Inspector | ⚠️ Placeholder only - empty state |
+| Viewpoints | ❌ Not implemented |
 
 ---
 
-## Current State
+## What We're Building
 
-Each page is independent:
-- Track Editor: Has TrackSelector and TrackMap with localStorage persistence
-- Media Intelligence: Placeholder only, no map or track
-- Event Ops: Placeholder only, no map or track
-- Fan Experience: Placeholder only, no map or track
-
----
-
-## Proposed Architecture
+This step implements the **Viewpoints system** end-to-end, plus makes the **Feature Toolbox** functional with the first real tool: "Save Viewpoint".
 
 ```text
-                     TrackContext (global)
-                           |
-          +----------------+----------------+
-          |                |                |
-     selectedTrack    setSelectedTrack   tracks[]
-          |
-          v
-    +-----+-----+-----+-----+
-    |     |     |     |     |
- Editor  Ops  Media  Fan   (all consume same context)
-    |     |     |     |
-    v     v     v     v
-  TrackMap (shared component)
-  + mode-specific overlays
++------------------------------------------------------------------+
+|                                                      |           |
+|                                                      |  FEATURE  |
+|                                                      |  TOOLBOX  |
+|                                                      |           |
+|                                                      |  + Point  |
+|                     MAP CANVAS                       |  + Line   |
+|                                                      |  + Polygon|
+|                                                      |  📸 Save  |  <-- First real tool
+|                                                      |-----------|
+|                                                      |  FEATURE  |
+|                                                      |  INSPECTOR|
+| [2D/3D] [N] [+/-]                                    |           |
+| +------------------------------+                     | (viewpoint|
+| | [Camera] [Drone] [Pit] [+]   |  <- NEW            |  form)    |
+| +------------------------------+                     |           |
++------------------------------------------------------------------+
 ```
 
 ---
 
-## Implementation Steps
+## Implementation Plan
 
-### 1. Create TrackContext
-**New file: `src/contexts/TrackContext.tsx`**
+### Phase 1: Data Foundation
 
-A React Context that:
-- Holds the currently selected track
-- Auto-loads tracks via useTracks hook
-- Persists selection to localStorage (using existing `wmc_last_track_id` key)
-- Auto-selects saved track on mount
+**New File: `src/types/viewpoint.ts`**
 
-### 2. Wrap App with TrackProvider
-**`src/App.tsx`**
+Define TypeScript interfaces for:
+- `Viewpoint` - Camera snapshot with metadata
+- `ViewpointMode` - Junction linking viewpoint to app mode
+- `CameraState` - Live camera capture from map
+- `IconKey` - Union type of semantic icon names
+- `AppMode` - 'editor' | 'ops' | 'media' | 'fan'
 
-Add `<TrackProvider>` inside the ProtectedRoute so track context is available to all authenticated views.
+**New File: `src/lib/viewpointIcons.ts`**
 
-### 3. Move TrackSelector to AppLayout
-**`src/components/layout/AppLayout.tsx`**
+Map semantic icon keys to Lucide icons:
 
-Add the TrackSelector to the top navigation bar (next to the nav items) so it's always visible regardless of which view you're on.
-
-### 4. Update TrackEditor
-**`src/pages/TrackEditor.tsx`**
-
-- Remove local track state and localStorage logic
-- Consume track from TrackContext instead
-- Keep the Feature Toolbox and Feature Inspector panels
-
-### 5. Add TrackMap to Other Views
-**`src/pages/MediaIntelligence.tsx`**
-**`src/pages/EventOps.tsx`**
-**`src/pages/FanExperience.tsx`**
-
-- Replace placeholder cards with the same TrackMap component
-- Each view gets the track from TrackContext
-- Mode-specific panels remain (Cameras panel, Alerts panel, etc.)
+| Key | Icon |
+|-----|------|
+| camera | Camera |
+| drone | Plane |
+| flag | Flag |
+| pit | Wrench |
+| map | Map |
+| shield | Shield |
+| broadcast | Radio |
+| cube | Box |
+| none | Circle |
 
 ---
 
-## Technical Details
+### Phase 2: API & State Layer
 
-### TrackContext Interface
-```text
-TrackContextType:
-  - selectedTrack: Track | null
-  - setSelectedTrack: (track: Track | null) => void
-  - tracks: Track[]
-  - isLoading: boolean
-```
+**New File: `src/services/viewpointsApi.ts`**
 
-### Shared TrackSelector Position
-The track selector moves from the Track Editor's left panel to the top navigation bar, making it globally accessible. When you change tracks from any view, the map updates immediately.
+API functions with mock data initially (same pattern as tracksApi.ts):
+- `fetchViewpoints(venueId)` - Get all viewpoints for a venue
+- `createViewpoint(data)` - Create viewpoint + mode junction records
+- `updateViewpoint(id, data)` - Update existing viewpoint
+- `deleteViewpoint(id)` - Delete viewpoint
 
-### LocalStorage Persistence
-The existing `wmc_last_track_id` key continues to work, but is now managed by TrackContext instead of TrackEditor directly.
+Mock data will include 3-4 sample viewpoints per track to demonstrate the feature.
+
+**New File: `src/hooks/useViewpoints.ts`**
+
+React Query hook wrapping the API:
+- Query key: `['viewpoints', venueId]`
+- Enabled when venueId exists
+- 5 minute stale time
+
+**New File: `src/hooks/useCurrentMode.ts`**
+
+Derives app mode from router path:
+
+| Path | Mode |
+|------|------|
+| /editor | editor |
+| /ops | ops |
+| /media | media |
+| /fan | fan |
+
+**New File: `src/contexts/ViewpointContext.tsx`**
+
+Global viewpoint state:
+- `viewpoints` - All viewpoints for current venue
+- `filteredViewpoints` - Filtered by current mode + visibility
+- `activeViewpoint` - Currently selected viewpoint
+- `setActiveViewpoint()` - Select and trigger flyTo
+- `saveViewpoint()` - Create new viewpoint from camera state
+- `mapRef` - Reference to TrackMap for camera control
 
 ---
 
-## Files Changed
+### Phase 3: Map Integration
 
-| File | Action |
-|------|--------|
-| `src/contexts/TrackContext.tsx` | Create - New context for global track state |
-| `src/App.tsx` | Modify - Add TrackProvider |
-| `src/components/layout/AppLayout.tsx` | Modify - Add TrackSelector to nav bar |
-| `src/pages/TrackEditor.tsx` | Modify - Use context instead of local state |
-| `src/pages/MediaIntelligence.tsx` | Modify - Add TrackMap, consume context |
-| `src/pages/EventOps.tsx` | Modify - Add TrackMap, consume context |
-| `src/pages/FanExperience.tsx` | Modify - Add TrackMap, consume context |
+**Modify: `src/components/editor/TrackMap.tsx`**
+
+Add imperative handle via `forwardRef` + `useImperativeHandle`:
+
+| Method | Purpose |
+|--------|---------|
+| `flyToViewpoint(viewpoint)` | Animate camera to saved position |
+| `captureCamera()` | Return current camera state |
+
+Camera field mapping:
+- `map.getCenter()` → latitude, longitude
+- `map.getZoom()` → height
+- `map.getBearing()` → heading
+- `map.getPitch()` → pitch
 
 ---
 
-## User Experience
+### Phase 4: UI Components
 
-1. User logs in, goes to Track Editor
-2. Selects "Utah Motorsports Campus" from the track dropdown in the nav bar
-3. Map loads Utah Motorsports Campus
-4. User clicks "Media Intelligence" in nav
-5. Same map is shown, but now with camera positions and coverage overlays
-6. User clicks "Event Ops"
-7. Same map, now with zone status overlays
-8. Track selection persists across views and sessions
+**New Directory: `src/components/viewpoints/`**
+
+**ViewpointButton.tsx**
+- Single viewpoint button with icon from viewpointIcons.ts
+- Shows name on hover via tooltip
+- Highlighted border when active
+- Click triggers flyToViewpoint()
+
+**ViewpointSelector.tsx**
+- Positioned: absolute bottom-left of map (above scale control)
+- Desktop: horizontal button bar with icons
+- Mobile: collapsible or dropdown
+- Filters viewpoints by current mode
+- Shows loading skeleton while fetching
+
+**SaveViewpointDialog.tsx**
+- Dialog/modal for creating new viewpoint
+- Captures camera state when dialog opens
+- Form fields:
+  - Name (text, required)
+  - Icon (select with icon preview)
+  - Description (textarea, optional)
+  - Modes (checkboxes: Editor, Ops, Media, Fan)
+  - Visibility (checkboxes: Fans, Media, Ops)
+  - Priority (number)
+  - Status (Draft/Published radio)
+- On save: calls createViewpoint API, refreshes list
+
+---
+
+### Phase 5: Feature Toolbox Update
+
+**Modify: `src/pages/TrackEditor.tsx`**
+
+Update Feature Toolbox section with real buttons:
+
+When nothing selected:
+- Add Point (disabled - placeholder for future)
+- Add Line (disabled - placeholder for future)
+- Add Polygon (disabled - placeholder for future)
+- **Save Viewpoint** (enabled - opens SaveViewpointDialog)
+
+When a feature is selected (future):
+- Edit Geometry
+- Duplicate
+- Delete
+- Save Viewpoint from Feature
+
+---
+
+### Phase 6: Integration
+
+**Modify: `src/components/layout/SharedMapContainer.tsx`**
+- Add ref to TrackMap component
+- Pass ref to ViewpointContext
+- Add ViewpointSelector overlay (bottom-left)
+
+**Modify: `src/App.tsx`**
+- Wrap with ViewpointProvider inside TrackProvider
+
+---
+
+## File Summary
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/types/viewpoint.ts` | Create | Type definitions |
+| `src/lib/viewpointIcons.ts` | Create | Icon mapping utility |
+| `src/services/viewpointsApi.ts` | Create | API + mock data |
+| `src/hooks/useViewpoints.ts` | Create | React Query hook |
+| `src/hooks/useCurrentMode.ts` | Create | Mode detection hook |
+| `src/contexts/ViewpointContext.tsx` | Create | Global viewpoint state |
+| `src/components/viewpoints/ViewpointButton.tsx` | Create | Single viewpoint button |
+| `src/components/viewpoints/ViewpointSelector.tsx` | Create | Bottom-left selector bar |
+| `src/components/viewpoints/SaveViewpointDialog.tsx` | Create | Save viewpoint modal |
+| `src/components/editor/TrackMap.tsx` | Modify | Add forwardRef + imperative handle |
+| `src/components/layout/SharedMapContainer.tsx` | Modify | Add ViewpointSelector + map ref |
+| `src/pages/TrackEditor.tsx` | Modify | Add real toolbox buttons |
+| `src/App.tsx` | Modify | Add ViewpointProvider |
+
+---
+
+## Runtime Flow
+
+1. **User selects a venue** → Viewpoints load from API
+2. **User navigates to /editor** → ViewpointSelector shows Editor-visible viewpoints
+3. **User clicks a viewpoint button** → Map animates to that camera position
+4. **User clicks "Save Viewpoint" in Toolbox** → Current camera captured, dialog opens
+5. **User fills form and saves** → API call creates viewpoint, list refreshes
+6. **User switches to /ops** → ViewpointSelector filters to Ops-visible viewpoints
+
+---
+
+## Design Compliance Checklist
+
+| Requirement | Implementation |
+|-------------|----------------|
+| Map is primary surface | ✅ Viewpoints overlay, don't resize map |
+| No left sidebar | ✅ Selector is bottom-left floating overlay |
+| No bottom panels | ✅ Selector is compact button bar |
+| Right column overlays map | ✅ Already implemented |
+| Map never reflows | ✅ No layout changes |
+| Mode controls visibility | ✅ Viewpoints filtered by mode |
+| Mode switch doesn't reload map | ✅ Map persists in SharedMapContainer |
+| Dark UI, broadcast-grade feel | ✅ Using existing theme |
+
+---
+
+## Mock Data Preview
+
+Initial mock viewpoints for demonstration:
+
+| Name | Icon | Visible In |
+|------|------|------------|
+| Start/Finish | flag | All modes |
+| Pit Lane Overview | pit | Editor, Ops, Media |
+| Turn 1 Entry | camera | Editor, Media |
+| Aerial View | drone | All modes |
+| Broadcast Tower | broadcast | Media only |
+
