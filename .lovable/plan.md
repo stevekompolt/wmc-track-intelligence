@@ -1,10 +1,10 @@
 
 
-# Fan Preview Panel Implementation Plan
+# Cinematic Camera Engine Implementation Plan
 
 ## Overview
 
-Create a cinematic, passive fan experience panel that allows users to take an automated camera tour through the venue. The panel emphasizes the map as the primary visual while providing elegant controls for tour playback, scene navigation, and viewpoint selection.
+Create a broadcast-quality camera controller that powers the Fan Preview experience. The engine replaces basic `flyTo` with smooth, cinematic transitions that feel like a film trailer rather than a map navigation tool.
 
 ---
 
@@ -12,150 +12,197 @@ Create a cinematic, passive fan experience panel that allows users to take an au
 
 ```text
 +------------------------------------------------------------------+
-|  Top Nav Bar                                                      |
+|                        CinematicCameraEngine                      |
 +------------------------------------------------------------------+
-|                                               |                   |
-|                                               |   FAN PREVIEW     |
-|                                               |   [Venue Name]    |
-|                                               |                   |
-|                                               |   [▶ Play Tour]   |
-|                                               |   60s • 6 scenes  |
-|                MAP CANVAS                     |                   |
-|                (full bleed)                   |   ○ ○ ● ○ ○ ○     |
-|                                               |                   |
-|                                               |   CURRENT SCENE   |
-|                                               |   Description...  |
-|                                               |                   |
-|                                               |   [Viewpoints]    |
-|                                               |                   |
-|                                               |   Day/Night | VIP |
-|                                               |                   |
-|                                               |   [🎟 Tickets]    |
-|                                               |   ← Exit          |
+|                                                                   |
+|  ┌─────────────────┐     ┌──────────────────┐                    |
+|  │  ViewpointData  │────▶│  PathCalculator  │                    |
+|  │  (from API)     │     │  (pre-compute)   │                    |
+|  └─────────────────┘     └────────┬─────────┘                    |
+|                                   │                               |
+|                                   ▼                               |
+|  ┌─────────────────┐     ┌──────────────────┐                    |
+|  │  useCameraEngine│◀────│  AnimationLoop   │                    |
+|  │  (React hook)   │     │  (requestAnimFrame)                   |
+|  └────────┬────────┘     └──────────────────┘                    |
+|           │                                                       |
+|           ▼                                                       |
+|  ┌─────────────────────────────────────────┐                     |
+|  │           TrackMap (Mapbox GL)          │                     |
+|  │  - setCenter(), setZoom(), setBearing() │                     |
+|  │  - Interactions disabled in Fan mode    │                     |
+|  └─────────────────────────────────────────┘                     |
+|                                                                   |
 +------------------------------------------------------------------+
 ```
 
 ---
 
-## New Files
+## Core Components
 
-### 1. Types: `src/types/tour.ts`
+### 1. Types: `src/types/camera.ts`
 
-Define tour-specific data structures:
+New type definitions for the camera engine:
 
 | Type | Purpose |
 |------|---------|
-| `TourScene` | Single scene in the tour with viewpoint ref, duration, description |
-| `TourState` | Current tour playback state (playing, paused, completed) |
-| `TourConfig` | Tour configuration (scenes, total duration) |
+| `CameraTarget` | Extended viewpoint with optional bounding box and target element |
+| `CameraTransition` | Defines a single camera animation with easing and duration |
+| `EasingProfile` | Configurable easing curve (ease-in %, glide %, ease-out %) |
+| `CameraConstraints` | Min altitude, max pitch, roll limits |
+| `CameraEngineState` | Current engine state (animating, idle, drifting) |
 
 ```text
-TourScene {
-  id: string
-  viewpointId: string
-  name: string
-  description: string
-  duration: number (seconds)
-  thumbnailUrl?: string
+CameraTarget {
+  latitude: number
+  longitude: number
+  height: number
+  heading: number
+  pitch: number
+  roll: number
+  boundingBox?: [sw: [lng, lat], ne: [lng, lat]]
+  targetElement?: { id: string, geometry: GeoJSON }
+  sceneType?: 'standard' | 'hero' | 'final'
 }
 
-TourState = 'idle' | 'playing' | 'paused' | 'completed'
+EasingProfile {
+  easeInPercent: number   // 0.20 (20%)
+  glidePercent: number    // 0.60 (60%)
+  easeOutPercent: number  // 0.20 (20%)
+}
 ```
 
 ---
 
-### 2. Hook: `src/hooks/useCinematicTour.ts`
+### 2. Easing Functions: `src/lib/cameraEasing.ts`
 
-Custom hook to manage tour playback:
+Custom easing curves for cinematic motion:
 
 | Function | Purpose |
 |----------|---------|
-| `play()` | Start/resume tour |
-| `pause()` | Pause tour |
-| `replay()` | Restart from beginning |
-| `jumpToScene(index)` | Jump to specific scene |
-| `currentSceneIndex` | Active scene index |
-| `tourState` | Current playback state |
-| `progress` | Overall tour progress (0-1) |
+| `cinematicEase(t, profile)` | Main easing function with 3-phase profile |
+| `calculateDuration(distance)` | Distance-based duration (6-10 seconds) |
+| `calculateCinematicTilt(progress)` | Subtle 2-4° tilt during approach |
+| `interpolateCamera(start, end, t)` | Smooth camera state interpolation |
+| `greatCircleDistance(p1, p2)` | Calculate distance between viewpoints |
 
-Tour logic:
-- Uses existing viewpoints filtered by `visibleToFans: true`
-- Each scene triggers `setActiveViewpoint()` for camera flyTo
-- Auto-advances using `setTimeout` based on scene duration
-- Pauses correctly when user interacts
+Easing curve implementation:
+- Phase 1 (0-20%): Ease-in using cubic bezier
+- Phase 2 (20-80%): Steady glide (near-linear)
+- Phase 3 (80-100%): Ease-out using cubic bezier
 
 ---
 
-### 3. Panel Component: `src/components/fan/FanPreviewPanel.tsx`
+### 3. Camera Engine Hook: `src/hooks/useCameraEngine.ts`
 
-Main panel component with all sections:
+Main hook that orchestrates camera animations:
 
-**Structure:**
-- Header (static)
-- Primary Action Button
-- Scene Timeline (dot navigation)
-- Current Scene Card
-- Viewpoint Selector (when paused)
-- Experience Toggles
-- Footer CTA
-- Exit Link
+| Property/Method | Purpose |
+|-----------------|---------|
+| `flyToTarget(target, options)` | Animate to a camera target |
+| `cancelAnimation()` | Gracefully cancel current animation |
+| `startDrift()` | Begin subtle micro-motion when paused |
+| `stopDrift()` | Stop drift motion |
+| `isAnimating` | Current animation state |
+| `progress` | Animation progress (0-1) |
 
-**Props:**
-- None (uses context for data)
+**Animation Loop Logic:**
+- Uses `requestAnimationFrame` for 60fps target
+- Calculates interpolated camera state each frame
+- Applies cinematic tilt during mid-animation
+- Handles interruption by blending to new target
 
-**State:**
-- `tourState` from `useCinematicTour`
-- `experienceMode: 'day' | 'night'`
-- `vipEmphasis: boolean`
-
----
-
-### 4. Sub-components
-
-**`src/components/fan/TourPlayButton.tsx`**
-- Large primary button with state-based label
-- Variants: Play, Pause, Replay
-- Subtle glow on hover
-- Duration/scene count subtext
-
-**`src/components/fan/SceneTimeline.tsx`**
-- Horizontal row of dots
-- Active dot highlighted with primary color
-- Clickable for scene jumping
-- Tooltip showing scene name on hover
-
-**`src/components/fan/SceneCard.tsx`**
-- Current scene title (uppercase, bold)
-- 1-2 line description
-- Optional thumbnail (right-aligned)
-- Fade transition between scenes
-
-**`src/components/fan/FanViewpointList.tsx`**
-- Vertical list of viewpoints (visible when paused)
-- Each item: icon + label
-- Active viewpoint highlighted
-- Click triggers camera flyTo
-
-**`src/components/fan/ExperienceToggles.tsx`**
-- Two compact toggles:
-  - Day / Night
-  - Standard / VIP emphasis
-- Minimal styling
-
-**`src/components/fan/FanFooterCTA.tsx`**
-- Primary button: "View Tickets"
-- Secondary text link: "Explore VIP Experiences"
-- Subtle top divider
+**Drift Motion:**
+- Subtle heading oscillation (±2° over 20s)
+- Gentle pitch variation (±1° over 15s)
+- Uses sine waves for smooth motion
+- Never freezes completely when paused
 
 ---
 
-### 5. Mobile Drawer: `src/components/fan/FanPreviewDrawer.tsx`
+### 4. Extended Map Handle: `src/components/editor/TrackMap.tsx`
 
-Bottom drawer for tablet/mobile:
-- Uses existing `Drawer` component from vaul
-- Collapsed state shows play button only
-- Expanded state shows timeline + scene card
-- Swipe dots for scene navigation
+Extend the imperative handle with new camera methods:
+
+| Method | Purpose |
+|--------|---------|
+| `setCameraState(state)` | Directly set camera without animation |
+| `setInteractionsEnabled(enabled)` | Enable/disable user interactions |
+| `getMapInstance()` | Access raw Mapbox instance for drift |
+
+**Fan Mode Behavior:**
+- Disable `dragPan`, `dragRotate`, `scrollZoom`, `touchZoomRotate`
+- Disable `doubleClickZoom`, `keyboard`
+- Hide navigation controls
+- Map remains visually interactive (hover effects, etc.)
+
+---
+
+### 5. Cinematic Context: `src/contexts/CinematicContext.tsx`
+
+Extends ViewpointContext with camera engine integration:
+
+| Property | Purpose |
+|----------|---------|
+| `cameraEngine` | Reference to useCameraEngine hook |
+| `transitionToViewpoint(vp, options)` | Cinematic fly-to with all features |
+| `isDrifting` | Whether camera is in drift mode |
+| `interactionsEnabled` | Whether user can control map |
+
+**Mode-Aware Behavior:**
+- Fan mode: Interactions disabled, drift enabled when paused
+- Other modes: Full interactions, no drift
+
+---
+
+### 6. Path Pre-calculation: `src/lib/cameraPathCalculator.ts`
+
+Pre-compute camera paths for tour scenes:
+
+| Function | Purpose |
+|----------|---------|
+| `calculateTourPath(viewpoints)` | Pre-calculate all transitions |
+| `validateViewpoint(vp)` | Check for missing data, apply fallbacks |
+| `frameBoundingBox(bbox, padding)` | Calculate camera for bounding box |
+
+**Validation & Fallbacks:**
+- If viewpoint incomplete: use venue centroid
+- If pitch missing: use 45° default
+- If heading missing: calculate from previous viewpoint
+- Log warnings silently (console.warn)
+
+---
+
+## Integration Points
+
+### Tour Hook Integration: `src/hooks/useCinematicTour.ts`
+
+Update to use CinematicContext instead of direct flyTo:
+
+```text
+Before: setActiveViewpoint(viewpoint)
+After:  transitionToViewpoint(viewpoint, {
+          sceneType: 'standard' | 'hero' | 'final',
+          onComplete: advanceScene
+        })
+```
+
+**Scene Duration Mapping:**
+- Standard scene: 8 seconds (matches animation duration)
+- Hero scene: 12-15 seconds
+- Final scene: 15 seconds with slow pull-back
+
+---
+
+### UI Text Fade Coordination
+
+Update FanPreviewPanel to coordinate text with camera:
+
+| Progress | UI Behavior |
+|----------|-------------|
+| 0-30% | Fade out current scene text |
+| 30-70% | Text hidden |
+| 70-100% | Fade in next scene text |
 
 ---
 
@@ -163,145 +210,135 @@ Bottom drawer for tablet/mobile:
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/types/tour.ts` | Create | Tour data types |
-| `src/hooks/useCinematicTour.ts` | Create | Tour playback logic |
-| `src/components/fan/FanPreviewPanel.tsx` | Create | Main panel component |
-| `src/components/fan/TourPlayButton.tsx` | Create | Play/Pause/Replay button |
-| `src/components/fan/SceneTimeline.tsx` | Create | Dot navigation |
-| `src/components/fan/SceneCard.tsx` | Create | Current scene display |
-| `src/components/fan/FanViewpointList.tsx` | Create | Viewpoint list (paused state) |
-| `src/components/fan/ExperienceToggles.tsx` | Create | Day/Night, VIP toggles |
-| `src/components/fan/FanFooterCTA.tsx` | Create | Ticket CTA |
-| `src/components/fan/FanPreviewDrawer.tsx` | Create | Mobile drawer |
-| `src/pages/FanExperience.tsx` | Modify | Replace current panel with FanPreviewPanel |
-| `src/index.css` | Modify | Add cinematic animation keyframes |
+| `src/types/camera.ts` | Create | Camera engine types |
+| `src/lib/cameraEasing.ts` | Create | Easing functions and math |
+| `src/lib/cameraPathCalculator.ts` | Create | Path pre-calculation |
+| `src/hooks/useCameraEngine.ts` | Create | Main camera animation hook |
+| `src/contexts/CinematicContext.tsx` | Create | Cinematic camera context |
+| `src/components/editor/TrackMap.tsx` | Modify | Extended handle, interaction control |
+| `src/hooks/useCinematicTour.ts` | Modify | Use cinematic transitions |
+| `src/components/fan/FanPreviewPanel.tsx` | Modify | Text fade coordination |
+| `src/components/fan/SceneCard.tsx` | Modify | Progress-based fade |
+| `src/pages/FanExperience.tsx` | Modify | Enable cinematic mode |
+| `src/App.tsx` | Modify | Add CinematicProvider |
 
 ---
 
-## Styling Details
+## Camera Constraints
 
-### Panel Styling
+Enforced limits to prevent visual issues:
 
-| Property | Value |
-|----------|-------|
-| Width | 340px (desktop) |
-| Height | 100vh |
-| Position | absolute top-0 right-0 bottom-0 |
-| Background | rgba(12, 14, 18, 0.85) |
-| Border | 1px left border-border |
-| z-index | 10 |
-| Pointer events | auto |
-
-### Typography
-
-| Element | Style |
-|---------|-------|
-| Header title | font-display, tracking-wider, text-sm, uppercase |
-| Venue name | text-xs, text-muted-foreground |
-| Scene title | uppercase, font-semibold, text-base |
-| Description | text-sm, text-muted-foreground |
-| Button labels | font-display, tracking-wide |
-
-### Colors
-
-| Element | Color |
-|---------|-------|
-| Active states | hsl(var(--primary)) (brand red) |
-| Inactive dots | hsl(var(--muted-foreground)) |
-| Background | rgb(12, 14, 18) at 85% opacity |
-| Text | foreground / muted-foreground |
-
-### Animations
-
-Add to `tailwind.config.ts`:
-
-| Animation | Purpose |
-|-----------|---------|
-| `fade-scene` | Smooth scene card transitions (0.5s) |
-| `pulse-subtle` | Gentle play button breathing |
+| Constraint | Value | Reason |
+|------------|-------|--------|
+| Min altitude | zoom 10 | Prevent ground collision |
+| Max pitch | -75° | Prevent horizon flip |
+| Roll limit | ±5° | Maintain horizon stability |
+| Min zoom | 8 | Prevent world wrap |
+| Max zoom | 20 | Prevent texture blur |
 
 ---
 
-## Integration Points
+## Easing Visualization
 
-### ViewpointContext Integration
-
-The panel uses the existing `ViewpointContext`:
-- `filteredViewpoints` - Filter by `visibleToFans: true`
-- `setActiveViewpoint()` - Trigger camera flyTo
-- `activeViewpoint` - Highlight current viewpoint
-
-### TrackContext Integration
-
-- `selectedTrack.name` - Display venue name in header
-
-### useIsMobile Hook
-
-- Detect viewport size
-- Switch between Panel (desktop) and Drawer (mobile)
-
----
-
-## Runtime Behavior
-
-1. **User enters /fan route**
-   - Panel renders with idle state
-   - Play button shows "▶ Play Cinematic Tour"
-   - Scene timeline shows first dot active
-
-2. **User clicks Play**
-   - Tour begins, button changes to "⏸ Pause Tour"
-   - Camera flies to first viewpoint
-   - Scene card shows scene 1 info
-   - After scene duration, auto-advance to next
-
-3. **User clicks Pause**
-   - Tour pauses, button changes to "▶ Resume Tour"
-   - Viewpoint list appears
-   - User can manually select viewpoints
-
-4. **Tour completes**
-   - Button changes to "↻ Replay Tour"
-   - Viewpoint list appears
-
-5. **User clicks scene dot**
-   - Tour jumps to that scene
-   - Camera flies to scene viewpoint
-
-6. **User clicks Exit**
-   - Navigate to /editor (or previous mode)
+```text
+Speed
+  ▲
+  │    ┌───────────────────────────┐
+  │   ╱                             ╲
+  │  ╱                               ╲
+  │ ╱                                 ╲
+  │╱                                   ╲
+  └─────────────────────────────────────▶ Time
+   0%   20%                      80%  100%
+   
+   ◀─▶  ◀────────────────────────▶  ◀──▶
+   Ease  Steady Glide (60%)         Ease
+   In                                Out
+   (20%)                            (20%)
+```
 
 ---
 
-## Responsive Behavior
+## Cinematic Tilt Behavior
 
-| Breakpoint | Behavior |
-|------------|----------|
-| Desktop (>1024px) | Full 340px right panel |
-| Tablet (768-1024px) | Narrower panel (280px) or bottom drawer |
-| Mobile (<768px) | Bottom drawer only |
+During camera transitions:
 
-Mobile drawer features:
-- Collapsed: Small play button visible
-- Expanded: Timeline, scene card, CTA
-- Swipe left/right on dots for scene navigation
+```text
+Pitch Offset
+    ▲
+ +4°│      ╱╲
+ +2°│    ╱    ╲
+  0°├──╱────────╲──────▶ Progress
+ -2°│
+    └─────────────────
+    0%   50%      100%
+    
+Approach: slight tilt toward target
+Arrival: level out smoothly
+```
 
 ---
 
-## Mock Tour Data
+## Drift Motion Pattern
 
-Tour scenes derived from fan-visible viewpoints:
+When tour is paused, camera continues subtle motion:
 
-| Scene | Name | Duration |
-|-------|------|----------|
-| 1 | Start/Finish Line | 10s |
-| 2 | Turn 1 Entry | 10s |
-| 3 | Pit Lane Overview | 10s |
-| 4 | Aerial View | 10s |
-| 5 | Grandstand View | 10s |
-| 6 | Victory Lane | 10s |
+```text
+Heading Offset (±2° over 20s period)
+    ▲
+ +2°│  ╱╲      ╱╲      ╱╲
+  0°├─╱──╲────╱──╲────╱──╲─▶ Time
+ -2°│╱    ╲  ╱    ╲  ╱
+    └───────────────────
+    
+Pitch Offset (±1° over 15s period)
+    ▲
+ +1°│   ╱╲    ╱╲    ╱╲
+  0°├──╱──╲──╱──╲──╱──╲─▶ Time
+ -1°│ ╱    ╲╱    ╲╱
+    └────────────────
+```
 
-Total: 60 seconds, 6 scenes
+---
+
+## Interruption Handling
+
+When user clicks a new target during animation:
+
+| Action | Behavior |
+|--------|----------|
+| Scene dot click | Blend from current position to new target |
+| Viewpoint click | Same blend behavior |
+| Pause | Stop animation, start drift |
+| Resume | Blend from drift position to next scene |
+
+**Blend Curve:**
+- Capture current camera state
+- Treat as new "from" position
+- Start new animation with fresh easing
+- No visible snap or jump
+
+---
+
+## Day/Night Handling
+
+| Change | Animation |
+|--------|-----------|
+| Map style | 2-second crossfade |
+| Shadows | Fade smoothly (handled by Mapbox) |
+| Camera | No change to position or motion |
+
+---
+
+## Performance Considerations
+
+| Optimization | Implementation |
+|--------------|----------------|
+| Pre-calculate paths | On venue load, compute all scene transitions |
+| RAF throttle | Skip frames if behind, maintain timing |
+| State batching | Single setState per frame |
+| No blocking | All math is synchronous, simple arithmetic |
+| Memory | Reuse camera state objects |
 
 ---
 
@@ -309,15 +346,16 @@ Total: 60 seconds, 6 scenes
 
 | Requirement | Implementation |
 |-------------|----------------|
-| Panel overlays map | absolute positioning, no resize |
-| Map is primary | Panel is translucent, minimal chrome |
-| No scrollbars | Fixed height, no overflow |
-| Dark translucent background | rgba(12, 14, 18, 0.85) |
-| Brand red accents only | Primary color for active states |
-| Cinematic transitions | fade-scene animation |
-| One primary action | Play button dominates |
-| No technical controls | Day/Night, VIP only |
-| Mobile drawer | Drawer component on small screens |
+| Camera always animated | Animation loop never stops (drift when idle) |
+| No user pan/zoom/rotate | Interactions disabled in Fan mode |
+| Viewpoint-driven only | All motion from Viewpoint records |
+| Non-linear easing | Custom 3-phase easing curve |
+| No snaps or jumps | Blend interruptions smoothly |
+| 6-10s transitions | Distance-calculated duration |
+| Cinematic tilt | 2-4° during approach |
+| Micro-drift when paused | Sine wave oscillation |
+| 60fps target | requestAnimationFrame loop |
+| Failsafe fallbacks | Venue centroid if data incomplete |
 
 ---
 
@@ -325,17 +363,16 @@ Total: 60 seconds, 6 scenes
 
 | Step | Task |
 |------|------|
-| 1 | Create tour types (`src/types/tour.ts`) |
-| 2 | Create `useCinematicTour` hook |
-| 3 | Create `TourPlayButton` component |
-| 4 | Create `SceneTimeline` component |
-| 5 | Create `SceneCard` component |
-| 6 | Create `FanViewpointList` component |
-| 7 | Create `ExperienceToggles` component |
-| 8 | Create `FanFooterCTA` component |
-| 9 | Create `FanPreviewPanel` (desktop) |
-| 10 | Create `FanPreviewDrawer` (mobile) |
-| 11 | Update `FanExperience.tsx` page |
-| 12 | Add fade-scene animation to CSS |
-| 13 | Test end-to-end playback |
+| 1 | Create camera types (`src/types/camera.ts`) |
+| 2 | Create easing functions (`src/lib/cameraEasing.ts`) |
+| 3 | Create path calculator (`src/lib/cameraPathCalculator.ts`) |
+| 4 | Create camera engine hook (`src/hooks/useCameraEngine.ts`) |
+| 5 | Update TrackMap with extended handle and interaction control |
+| 6 | Create CinematicContext (`src/contexts/CinematicContext.tsx`) |
+| 7 | Update useCinematicTour to use cinematic transitions |
+| 8 | Update FanPreviewPanel for text fade coordination |
+| 9 | Update SceneCard with progress-based fade |
+| 10 | Update FanExperience to enable cinematic mode |
+| 11 | Update App.tsx with CinematicProvider |
+| 12 | Test end-to-end tour playback |
 
