@@ -5,14 +5,40 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog';
 import { OverlayEditorPanel } from '@/components/editor/OverlayEditorPanel';
+import { FeatureInspector } from '@/components/editor/FeatureInspector';
+import { FeatureList } from '@/components/editor/FeatureList';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
 import { useOverlayEditor } from '@/hooks/useOverlayEditor';
 import { useMapOverlayRenderer } from '@/hooks/useMapOverlayRenderer';
+import { useFeatureEditor } from '@/hooks/useFeatureEditor';
+import { useFeatureDrawing } from '@/hooks/useFeatureDrawing';
+import { useFeatureRenderer } from '@/hooks/useFeatureRenderer';
 import type { CornerHandle, VenueCoords } from '@/types/overlay';
+import type { FeatureType, FeatureGeometry } from '@/types/feature';
+import { DEFAULT_FEATURE_STYLE } from '@/types/feature';
 import mapboxgl from 'mapbox-gl';
 
 type EditorMode = 'features' | 'overlay';
+
+// Drawing mode toolbar instructions
+const DRAWING_INSTRUCTIONS: Record<string, { icon: React.ReactNode; label: string; hint: string }> = {
+  point: {
+    icon: <MapPin className="h-4 w-4" />,
+    label: 'DRAWING POINT',
+    hint: 'Click to place • ESC to cancel',
+  },
+  line: {
+    icon: <Spline className="h-4 w-4" />,
+    label: 'DRAWING LINE',
+    hint: 'Click to add points • Double-click to finish • ESC to cancel',
+  },
+  polygon: {
+    icon: <Hexagon className="h-4 w-4" />,
+    label: 'DRAWING POLYGON',
+    hint: 'Click to add points • Close shape to finish • ESC to cancel',
+  },
+};
 
 export default function TrackEditor() {
   const { selectedTrack } = useTrackContext();
@@ -31,6 +57,22 @@ export default function TrackEditor() {
   }, [selectedTrack?.latitude, selectedTrack?.longitude]);
 
   const overlayEditor = useOverlayEditor(selectedTrack?.id, venueCoords);
+
+  // Feature editor hook
+  const featureEditor = useFeatureEditor({
+    venueId: selectedTrack?.id,
+  });
+
+  // Handle feature complete from drawing
+  const handleFeatureComplete = useCallback((type: FeatureType, geometry: FeatureGeometry) => {
+    featureEditor.createFeature(type, geometry, DEFAULT_FEATURE_STYLE);
+  }, [featureEditor]);
+
+  // Feature drawing hook
+  const featureDrawing = useFeatureDrawing({
+    map: mapInstance,
+    onFeatureComplete: handleFeatureComplete,
+  });
 
   // Get map instance when available
   useEffect(() => {
@@ -93,17 +135,59 @@ export default function TrackEditor() {
     onMoveDrag: handleMoveDrag,
   });
 
+  // Initialize feature renderer
+  useFeatureRenderer({
+    map: mapInstance,
+    features: featureEditor.features,
+    partialCoords: featureDrawing.partialCoords,
+    drawingMode: featureDrawing.mode,
+    selectedFeatureId: featureEditor.selectedFeature?.id || null,
+    onFeatureClick: featureEditor.selectFeature,
+  });
+
+  // Handle drawing tool click
+  const handleStartDrawing = useCallback((type: FeatureType) => {
+    // Deselect any selected feature when starting to draw
+    featureEditor.selectFeature(null);
+    featureDrawing.startDrawing(type);
+  }, [featureEditor, featureDrawing]);
+
+  // Get current drawing instruction
+  const drawingInstruction = featureDrawing.mode !== 'none' ? DRAWING_INSTRUCTIONS[featureDrawing.mode] : null;
+
   return (
     <div className="relative h-full pointer-events-none">
-      {/* Top Toolbar */}
+      {/* Top Toolbar - changes when drawing */}
       <div className="absolute top-0 left-0 right-[360px] z-10 flex items-center justify-between px-3 h-10 bg-secondary/95 backdrop-blur pointer-events-auto">
-        <div className="flex items-center gap-2">
-          <MousePointer2 className="h-4 w-4 text-muted-foreground" />
-          <span className="text-xs font-mono text-muted-foreground">SELECT MODE</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-muted-foreground">2D VIEW</span>
-        </div>
+        {drawingInstruction ? (
+          <>
+            <div className="flex items-center gap-2 text-primary">
+              {drawingInstruction.icon}
+              <span className="text-xs font-mono font-semibold">{drawingInstruction.label}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground">{drawingInstruction.hint}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={featureDrawing.cancelDrawing}
+                className="h-6 px-2 text-xs"
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <MousePointer2 className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-mono text-muted-foreground">SELECT MODE</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground">2D VIEW</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Right Panel */}
@@ -136,52 +220,55 @@ export default function TrackEditor() {
             <div className="p-3 border-b border-border">
               {selectedTrack ? (
                 <div className="grid grid-cols-2 gap-2">
-                  {/* Add Point - placeholder */}
+                  {/* Add Point */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant="outline"
+                        variant={featureDrawing.mode === 'point' ? 'default' : 'outline'}
                         size="sm"
                         className="h-9 justify-start gap-2"
-                        disabled
+                        onClick={() => handleStartDrawing('point')}
+                        disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'point'}
                       >
                         <MapPin className="h-4 w-4" />
                         <span className="text-xs">Point</span>
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">Coming soon</TooltipContent>
+                    <TooltipContent side="bottom">Place a point marker</TooltipContent>
                   </Tooltip>
                   
-                  {/* Add Line - placeholder */}
+                  {/* Add Line */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant="outline"
+                        variant={featureDrawing.mode === 'line' ? 'default' : 'outline'}
                         size="sm"
                         className="h-9 justify-start gap-2"
-                        disabled
+                        onClick={() => handleStartDrawing('line')}
+                        disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'line'}
                       >
                         <Spline className="h-4 w-4" />
                         <span className="text-xs">Line</span>
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">Coming soon</TooltipContent>
+                    <TooltipContent side="bottom">Draw a line path</TooltipContent>
                   </Tooltip>
                   
-                  {/* Add Polygon - placeholder */}
+                  {/* Add Polygon */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant="outline"
+                        variant={featureDrawing.mode === 'polygon' ? 'default' : 'outline'}
                         size="sm"
                         className="h-9 justify-start gap-2"
-                        disabled
+                        onClick={() => handleStartDrawing('polygon')}
+                        disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'polygon'}
                       >
                         <Hexagon className="h-4 w-4" />
                         <span className="text-xs">Polygon</span>
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">Coming soon</TooltipContent>
+                    <TooltipContent side="bottom">Draw an area polygon</TooltipContent>
                   </Tooltip>
                   
                   {/* Save Viewpoint - functional */}
@@ -192,6 +279,7 @@ export default function TrackEditor() {
                         size="sm"
                         className="h-9 justify-start gap-2 hover:border-primary hover:text-primary"
                         onClick={() => setSaveDialogOpen(true)}
+                        disabled={featureDrawing.isDrawing}
                       >
                         <Camera className="h-4 w-4" />
                         <span className="text-xs">Viewpoint</span>
@@ -207,18 +295,58 @@ export default function TrackEditor() {
               )}
             </div>
             
+            {/* Feature List */}
+            <div className="p-3 border-b border-border">
+              <h2 className="font-display text-sm font-semibold tracking-wider">
+                FEATURES ({featureEditor.features.length})
+              </h2>
+            </div>
+            <FeatureList
+              features={featureEditor.features}
+              selectedFeatureId={featureEditor.selectedFeature?.id || null}
+              onSelectFeature={featureEditor.selectFeature}
+            />
+            
             {/* Feature Inspector */}
             <div className="p-3 border-b border-border">
               <h2 className="font-display text-sm font-semibold tracking-wider">
                 FEATURE INSPECTOR
               </h2>
             </div>
-            <div className="flex-1 p-3 overflow-auto">
-              <p className="text-xs text-muted-foreground font-mono">
-                {selectedTrack
-                  ? 'Select a feature to view properties'
-                  : 'Select a track first'}
-              </p>
+            <div className="flex-1 overflow-auto">
+              <FeatureInspector
+                feature={featureEditor.selectedFeature}
+                onUpdateName={(name) => {
+                  if (featureEditor.selectedFeature) {
+                    featureEditor.updateName(featureEditor.selectedFeature.id, name);
+                  }
+                }}
+                onUpdateDescription={(desc) => {
+                  if (featureEditor.selectedFeature) {
+                    featureEditor.updateDescription(featureEditor.selectedFeature.id, desc);
+                  }
+                }}
+                onUpdateStyle={(style) => {
+                  if (featureEditor.selectedFeature) {
+                    featureEditor.updateStyle(featureEditor.selectedFeature.id, style);
+                  }
+                }}
+                onUpdateVisibility={(visibility) => {
+                  if (featureEditor.selectedFeature) {
+                    featureEditor.updateVisibility(featureEditor.selectedFeature.id, visibility);
+                  }
+                }}
+                onUpdateStatus={(status) => {
+                  if (featureEditor.selectedFeature) {
+                    featureEditor.updateStatus(featureEditor.selectedFeature.id, status);
+                  }
+                }}
+                onDelete={() => {
+                  if (featureEditor.selectedFeature) {
+                    featureEditor.deleteFeature(featureEditor.selectedFeature.id);
+                  }
+                }}
+              />
             </div>
           </>
         ) : (
