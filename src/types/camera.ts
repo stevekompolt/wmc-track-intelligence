@@ -3,8 +3,31 @@ import type { CameraState } from './viewpoint';
 // Scene types for duration mapping
 export type SceneType = 'standard' | 'hero' | 'final';
 
+// Pitch preset types for scene-specific camera angles
+export type PitchPreset = 'aerial_reveal' | 'track_follow' | 'grandstand_pov' | 'overhead';
+
+// Target engine for pitch normalization
+export type TargetEngine = 'mapbox' | 'cesium';
+
 // Camera engine states
-export type CameraEngineState = 'idle' | 'animating' | 'drifting';
+export type CameraEngineState = 'idle' | 'animating' | 'drifting' | 'orbiting';
+
+// Orbit direction
+export type OrbitDirection = 'cw' | 'ccw';
+
+// LookAt target for orbit behavior
+export interface LookAtTarget {
+  latitude: number;
+  longitude: number;
+  height: number;
+}
+
+// Orbit configuration for target elements
+export interface OrbitConfig {
+  maxArc: number;      // Max degrees to orbit (default: 15)
+  speed: number;       // Degrees per second (default: 2)
+  direction: OrbitDirection;
+}
 
 // Extended camera target with optional features
 export interface CameraTarget extends CameraState {
@@ -14,6 +37,9 @@ export interface CameraTarget extends CameraState {
     geometry?: GeoJSON.Geometry;
   };
   sceneType?: SceneType;
+  lookAtTarget?: LookAtTarget;
+  orbitConfig?: OrbitConfig;
+  pitchPreset?: PitchPreset;
 }
 
 // Configurable easing profile
@@ -44,6 +70,13 @@ export const DEFAULT_EASING_PROFILE: EasingProfile = {
   easeInPercent: 0.20,
   glidePercent: 0.60,
   easeOutPercent: 0.20,
+};
+
+// Default orbit config
+export const DEFAULT_ORBIT_CONFIG: OrbitConfig = {
+  maxArc: 15,
+  speed: 2,
+  direction: 'cw',
 };
 
 // Scene duration mapping (in ms)

@@ -258,10 +258,22 @@ Conversion:
 
 The Cinematic Camera Engine is architecturally correct. This plan adds:
 
-1. **Pitch normalization** for Cesium compatibility
-2. **LookAt/Orbit support** for target elements
-3. **Scene presets** for recommended camera angles
-4. **Renderer abstraction** (optional) for multi-engine support
+1. **Pitch normalization** for Cesium compatibility ✅
+2. **LookAt/Orbit support** for target elements ✅
+3. **Scene presets** for recommended camera angles ✅
+4. **Renderer abstraction** (optional) for multi-engine support ✅
 
 The engine continues to live in your Git repo, deployed by Lovable, maintained by your team — exactly as specified.
+
+---
+
+## Implementation Status
+
+| File | Status |
+|------|--------|
+| `src/types/camera.ts` | ✅ Extended with LookAtTarget, OrbitConfig, PitchPreset |
+| `src/lib/cameraEasing.ts` | ✅ Added normalizePitch, calculateOrbitPosition, toRadians/toDegrees |
+| `src/lib/cameraPresets.ts` | ✅ Created with scene presets and mode constraints |
+| `src/lib/cameraRenderers.ts` | ✅ Created with MapboxRenderer and CesiumRenderer stubs |
+| `src/hooks/useCameraEngine.ts` | ✅ Added orbitAroundTarget method |
 
