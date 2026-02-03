@@ -1,116 +1,91 @@
 
 
-# Cinematic Camera Engine Refinement Plan
+# Venue Overlay Editor - Snapping & Auto-Fit Implementation
 
-## Overview
+## Problem Analysis
 
-The Cinematic Camera Engine is already implemented and functional. This plan aligns it more precisely with the Cesium-based camera math specification while maintaining Mapbox compatibility. We'll also add the missing `lookAt` behavior for target elements.
+Looking at the screenshot, the issue is clear:
+- **North: 40.580477** and **South: 40.580477** are identical
+- This creates an invalid bounding box (north must be > south)
+- The overlay image was uploaded but cannot render because the bounding box has zero height
 
----
-
-## Current Architecture (What You Have)
-
-```text
-+------------------------------------------------------------------+
-|                    Current Implementation                         |
-+------------------------------------------------------------------+
-|                                                                   |
-|  Salesforce                                                       |
-|  ────────────                                                     |
-|  Venue_Viewpoint__c                                               |
-|    - lat / lon / height (degrees, zoom)                           |
-|    - heading / pitch / roll (degrees)                             |
-|    - bounding box                                                 |
-|    - mode visibility                                              |
-|              ↓                                                    |
-|                                                                   |
-|  React Hooks + Context                                            |
-|  ────────────────────                                             |
-|  useCameraEngine.ts ─── cameraEasing.ts                           |
-|         ↓                                                         |
-|  CinematicContext.tsx                                             |
-|         ↓                                                         |
-|                                                                   |
-|  TrackMap (Mapbox GL JS)                                          |
-|  ───────────────────────                                          |
-|  - setCenter(), setZoom(), setBearing(), setPitch()               |
-|                                                                   |
-+------------------------------------------------------------------+
-```
-
-This is the **correct architecture**. The engine is a shared runtime service that Lovable calls, not implements.
+The root cause is in `createDefaultOverlay()` which sets all bounds to `0`, and when the user uploads an image, there's no automatic snap to venue bounds.
 
 ---
 
-## Refinements Needed
+## Solution Overview
 
-### 1. Pitch Semantics Alignment
+Implement a snapping-first workflow where:
+1. When an image is uploaded, automatically snap to venue bounds
+2. Add a dedicated Snapping Controls section with multiple snap sources
+3. Show visual ghost preview before committing snap
+4. Remove requirement for manual coordinate entry
 
-**Current:** Mapbox uses positive pitch (0° = level, 60° = looking down)
-**Spec:** Cesium uses negative pitch (0° = horizon, -90° = straight down)
+---
 
-**Solution:** Add pitch direction configuration:
+## Architecture
 
 ```text
-// In cameraEasing.ts
-function normalizePitch(pitch: number, targetEngine: 'mapbox' | 'cesium'): number {
-  if (targetEngine === 'cesium') {
-    // Cesium: 0 = horizon, -90 = down
-    return Math.max(-75, Math.min(-5, pitch));
-  } else {
-    // Mapbox: 0 = level, 85 = max
-    return Math.abs(Math.max(-75, Math.min(-5, pitch)));
-  }
-}
++----------------------------------------------------------+
+|                    Snapping Flow                          |
++----------------------------------------------------------+
+|                                                           |
+|  Image Uploaded                                           |
+|       │                                                   |
+|       ▼                                                   |
+|  Auto-detect aspect ratio                                 |
+|       │                                                   |
+|       ▼                                                   |
+|  Calculate initial bounds from venue center + ratio       |
+|       │                                                   |
+|       ▼                                                   |
+|  Render overlay immediately (no invalid state)            |
+|                                                           |
+|  ═══════════════════════════════════════════════════════  |
+|                                                           |
+|  Snap Source Selection                                    |
+|       │                                                   |
+|       ├── Venue Bounds ─────► Use track lat/lng + span    |
+|       ├── Geometry ─────────► Pick polygon, use its bbox  |
+|       ├── Element ──────────► Pick venue element bounds   |
+|       ├── Viewpoint ────────► Use viewpoint camera frame  |
+|       └── Image Metadata ───► Extract from image if geo   |
+|                                                           |
+|  Ghost Preview (50% opacity)                              |
+|       │                                                   |
+|       ▼                                                   |
+|  "Snap Now" commits preview to actual bounds              |
+|                                                           |
++----------------------------------------------------------+
 ```
 
 ---
 
-### 2. Add Target Element LookAt Support
+## Data Model Extensions
 
-**Current:** Not implemented
-**Spec:** When a viewpoint has a Target Element, use `lookAt` behavior
+### Extended MapOverlay Type
 
-**Solution:** Add orbit/lookAt mode to the camera engine:
+| Field | Type | Purpose |
+|-------|------|---------|
+| `snapSource` | SnapSource | Current snap mode |
+| `targetElementId` | string | For Element snap |
+| `targetGeometryId` | string | For Geometry snap |
+| `targetViewpointId` | string | For Viewpoint snap |
+| `autoFitOnLoad` | boolean | Re-snap when dependencies change |
+| `rotation` | number | Degrees (0-360) |
 
-| File | Change |
-|------|--------|
-| `src/types/camera.ts` | Add `lookAtTarget` and `orbitConfig` to `CameraTarget` |
-| `src/hooks/useCameraEngine.ts` | Add `orbitAroundTarget()` method |
-| `src/lib/cameraEasing.ts` | Add `calculateOrbitPosition()` function |
-
----
-
-### 3. Scene-Specific Pitch Presets
-
-Add recommended pitch ranges by scene type:
-
-| Scene Type | Pitch Range | Description |
-|------------|-------------|-------------|
-| aerial_reveal | -20° to -35° | Wide establishing shot |
-| track_follow | -10° to -25° | Following the action |
-| grandstand_pov | -5° to -15° | Fan perspective |
-| overhead | -45° to -65° | Cinematic bird's eye |
-
----
-
-### 4. Add Cesium Renderer Adapter (Future-Proofing)
-
-To support both Mapbox and Cesium from the same engine:
+### SnapSource Type
 
 ```text
-interface CameraRenderer {
-  flyTo(target: CameraTarget, options: TransitionOptions): void;
-  lookAt(target: Cartesian3, orientation: HeadingPitchRange): void;
-  setCameraState(state: CameraState): void;
-  getCameraState(): CameraState;
-}
-
-class MapboxRenderer implements CameraRenderer { ... }
-class CesiumRenderer implements CameraRenderer { ... }
+type SnapSource = 
+  | 'none'           // Free placement
+  | 'venue_bounds'   // Track center + configurable span
+  | 'geometry'       // Target polygon bounding box
+  | 'element'        // Target venue element bounds
+  | 'viewpoint'      // Frame from viewpoint camera
+  | 'previous'       // Copy from another overlay
+  | 'image_metadata' // Extract geo from image EXIF
 ```
-
-This abstraction allows the engine to work with either renderer.
 
 ---
 
@@ -118,51 +93,109 @@ This abstraction allows the engine to work with either renderer.
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/types/camera.ts` | Modify | Add orbit config, lookAt target, pitch presets |
-| `src/lib/cameraEasing.ts` | Modify | Add pitch normalization, orbit calculations |
-| `src/hooks/useCameraEngine.ts` | Modify | Add `orbitAroundTarget()` method |
-| `src/lib/cameraRenderers.ts` | Create | Renderer abstraction (Mapbox + future Cesium) |
-| `src/lib/cameraPresets.ts` | Create | Scene-specific camera presets |
+| `src/types/overlay.ts` | Modify | Add SnapSource, extend MapOverlay |
+| `src/hooks/useOverlayEditor.ts` | Modify | Add snap logic, auto-fit on upload |
+| `src/hooks/useOverlaySnapping.ts` | Create | Snapping calculation logic |
+| `src/components/editor/OverlayEditorPanel.tsx` | Modify | Add Snapping Controls section |
+| `src/components/editor/SnapSourceSelector.tsx` | Create | Dropdown + target picker |
+| `src/hooks/useMapOverlayRenderer.ts` | Modify | Add ghost preview layer |
+| `src/pages/TrackEditor.tsx` | Modify | Pass venue bounds to editor |
 
 ---
 
-## Type Additions
+## Implementation Details
 
-### Extended CameraTarget
+### 1. Auto-Fit on Image Upload
 
-```text
-interface CameraTarget {
-  // Existing fields...
-  
-  // NEW: Target element for lookAt behavior
-  lookAtTarget?: {
-    latitude: number;
-    longitude: number;
-    height: number;
-  };
-  
-  // NEW: Orbit configuration
-  orbitConfig?: {
-    maxArc: number;      // Max 15 degrees
-    speed: number;       // Degrees per second
-    direction: 'cw' | 'ccw';
-  };
-  
-  // NEW: Scene-specific pitch preset
-  pitchPreset?: 'aerial_reveal' | 'track_follow' | 'grandstand_pov' | 'overhead';
-}
-```
-
-### Camera Presets
+When an image is uploaded:
+1. Load image to detect dimensions
+2. Calculate aspect ratio
+3. Create bounding box centered on venue with correct proportions
+4. Immediately render (no invalid state possible)
 
 ```text
-const CAMERA_PRESETS = {
-  aerial_reveal: { pitchRange: [-35, -20], duration: 10 },
-  track_follow: { pitchRange: [-25, -10], duration: 8 },
-  grandstand_pov: { pitchRange: [-15, -5], duration: 8 },
-  overhead: { pitchRange: [-65, -45], duration: 12 },
-};
+onImageUpload(file):
+  1. Create blob URL
+  2. Load Image to get naturalWidth/naturalHeight
+  3. aspectRatio = width / height
+  4. baseSpan = 0.01 (configurable, ~1km)
+  5. bounds = {
+       north: venue.lat + (baseSpan / 2),
+       south: venue.lat - (baseSpan / 2),
+       east: venue.lng + (baseSpan * aspectRatio / 2),
+       west: venue.lng - (baseSpan * aspectRatio / 2)
+     }
+  6. Update overlay with imageUrl + bounds
 ```
+
+### 2. Snapping Controls UI
+
+New section in the right panel between "Overlay Asset" and "Placement":
+
+| Control | Type | Behavior |
+|---------|------|----------|
+| Snap Source | Dropdown | Select snap mode |
+| Target Picker | Conditional | Shows for geometry/element/viewpoint |
+| Snap Now | Button | Commits ghost preview |
+| Re-Snap | Button | Reapply current snap |
+| Reset to Free | Button | Clear snap, enable manual |
+
+### 3. Ghost Preview
+
+When snap source is selected (before commit):
+- Show second overlay layer at 50% opacity
+- Position at calculated snap bounds
+- Animate transition (200-300ms) when committed
+
+### 4. Venue Bounds Calculation
+
+Current implementation uses fixed span (0.01). Enhanced version:
+- Start with 0.015 (~1.5km) for motorsports venues
+- Preserve image aspect ratio
+- Offer "Fit Tight" vs "Fit Padded" options
+
+---
+
+## UI Changes
+
+### New Snapping Section (between Asset and Placement)
+
+```text
+┌────────────────────────────────────────────┐
+│ SNAPPING                                   │
+├────────────────────────────────────────────┤
+│ Snap Source                                │
+│ ┌────────────────────────────────────────┐ │
+│ │ ▼ Venue Bounds                         │ │
+│ └────────────────────────────────────────┘ │
+│                                            │
+│ ┌──────────────┐ ┌──────────────┐         │
+│ │  Snap Now    │ │   Re-Snap    │         │
+│ └──────────────┘ └──────────────┘         │
+│                                            │
+│ ┌────────────────────────────────────────┐ │
+│ │     Reset to Free Placement            │ │
+│ └────────────────────────────────────────┘ │
+│                                            │
+│ ☑ Auto-fit when image changes             │
+└────────────────────────────────────────────┘
+```
+
+### Placement Section Update
+
+Move coordinate inputs to a collapsible "Advanced" section:
+- Most users never need manual coordinates
+- Collapsed by default
+- Includes precision nudge buttons (±0.00001°)
+
+---
+
+## Validation Changes
+
+Remove blocking validation for invalid bounding box during editing:
+- Auto-fit always produces valid bounds
+- Show warning only if somehow bounds become invalid
+- Never prevent rendering if image exists
 
 ---
 
@@ -170,134 +203,97 @@ const CAMERA_PRESETS = {
 
 | Step | Task |
 |------|------|
-| 1 | Add pitch preset types to `camera.ts` |
-| 2 | Add `normalizePitch()` function to `cameraEasing.ts` |
-| 3 | Create `cameraPresets.ts` with scene-specific defaults |
-| 4 | Add lookAt target support to `CameraTarget` type |
-| 5 | Add `orbitAroundTarget()` to `useCameraEngine.ts` |
-| 6 | Create `cameraRenderers.ts` abstraction (optional, for Cesium) |
-| 7 | Update viewpoint mock data with pitch presets |
-
----
-
-## What Stays the Same
-
-The core architecture is correct and shouldn't change:
-
-| Component | Status |
-|-----------|--------|
-| `useCameraEngine.ts` location | ✅ Correct (React hook) |
-| `cameraEasing.ts` math | ✅ Correct (pure functions) |
-| `CinematicContext.tsx` pattern | ✅ Correct (React context) |
-| Separation from UI | ✅ Correct (Lovable calls, doesn't implement) |
-| Salesforce stores degrees | ✅ Correct |
-| Engine converts for renderer | ✅ Correct |
-
----
-
-## Governance Rule (Recommendation)
-
-Document and enforce:
-
-> **Lovable may CALL the Cinematic Camera Engine,**
-> **but may not MODIFY camera math or constraints.**
-
-This keeps the engine stable and reusable across modes.
+| 1 | Extend `overlay.ts` with SnapSource and new fields |
+| 2 | Create `useOverlaySnapping.ts` hook with calculation logic |
+| 3 | Update `useOverlayEditor.ts` with auto-fit on image upload |
+| 4 | Create `SnapSourceSelector.tsx` component |
+| 5 | Update `OverlayEditorPanel.tsx` with new Snapping section |
+| 6 | Update `useMapOverlayRenderer.ts` with ghost preview layer |
+| 7 | Update `TrackEditor.tsx` to pass venue bounds |
+| 8 | Move Placement coordinates to Advanced (collapsible) |
+| 9 | Add animation for snap commit (200-300ms transition) |
 
 ---
 
 ## Technical Details
 
-### Orbit Calculation
-
-For target elements with orbit behavior:
+### Image Aspect Ratio Detection
 
 ```text
-function calculateOrbitPosition(
-  targetLat: number,
-  targetLon: number,
-  distance: number,
-  heading: number,
-  arcProgress: number,
-  maxArc: number
-): { lat: number; lon: number; heading: number } {
-  // Calculate position on arc around target
-  const arcHeading = heading + (arcProgress * maxArc);
-  
-  // Position camera at distance from target, looking at target
-  const lat = targetLat + Math.cos(toRadians(arcHeading)) * (distance / 111); // rough km to degrees
-  const lon = targetLon + Math.sin(toRadians(arcHeading)) * (distance / 111);
-  
-  // Camera heading points at target
-  const cameraHeading = (arcHeading + 180) % 360;
-  
-  return { lat, lon, heading: cameraHeading };
+async function getImageAspectRatio(url: string): Promise<number> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img.naturalWidth / img.naturalHeight);
+    img.onerror = () => resolve(1); // fallback to square
+    img.src = url;
+  });
 }
 ```
 
-### Pitch Direction Reference
+### Snap Bounds Calculation
 
 ```text
-Mapbox GL JS:
-  0° = looking at horizon
-  85° = looking down (max)
-  Uses POSITIVE values
-
-Cesium:
-  0° = looking at horizon  
-  -90° = looking straight down
-  Uses NEGATIVE values
-
-Conversion:
-  cesiumPitch = -1 * mapboxPitch
+function calculateSnapBounds(
+  venue: { lat: number; lng: number },
+  aspectRatio: number,
+  span: number = 0.015,
+  padding: number = 1.0
+): BoundingBox {
+  const latSpan = span;
+  const lngSpan = span * aspectRatio;
+  
+  return {
+    north: venue.lat + (latSpan / 2) * padding,
+    south: venue.lat - (latSpan / 2) * padding,
+    east: venue.lng + (lngSpan / 2) * padding,
+    west: venue.lng - (lngSpan / 2) * padding,
+  };
+}
 ```
+
+### Ghost Preview Rendering
+
+```text
+// In useMapOverlayRenderer.ts
+if (ghostBounds && isPreviewMode) {
+  // Add second image source with 50% opacity
+  map.addSource('overlay-ghost', {
+    type: 'image',
+    url: overlay.imageUrl,
+    coordinates: ghostCoordinates,
+  });
+  
+  map.addLayer({
+    id: 'overlay-ghost-layer',
+    type: 'raster',
+    source: 'overlay-ghost',
+    paint: {
+      'raster-opacity': 0.5,
+    },
+  });
+}
+```
+
+---
+
+## Success Criteria
+
+| Requirement | Implementation |
+|-------------|----------------|
+| No manual lat/lng required | Auto-fit on upload, snap controls |
+| Overlay visible after upload | Immediate valid bounds from aspect ratio |
+| Under 10 seconds to place | Upload → auto-snap → done |
+| Ghost preview before commit | 50% opacity preview layer |
+| Reversible snapping | Reset to Free Placement button |
+| Works across modes | Same bounds for Fan/Media/Ops |
 
 ---
 
 ## Summary
 
-The Cinematic Camera Engine is architecturally correct. This plan adds:
+This implementation:
+1. **Fixes the immediate bug** by auto-fitting bounds when image is uploaded
+2. **Adds visual snapping** with preview before commit
+3. **Removes coordinate friction** by hiding manual inputs in Advanced
+4. **Maintains data integrity** by ensuring bounds are always valid after any operation
 
-1. **Pitch normalization** for Cesium compatibility ✅
-2. **LookAt/Orbit support** for target elements ✅
-3. **Scene presets** for recommended camera angles ✅
-4. **Renderer abstraction** (optional) for multi-engine support ✅
-
-The engine continues to live in your Git repo, deployed by Lovable, maintained by your team — exactly as specified.
-
----
-
-## Implementation Status
-
-| File | Status |
-|------|--------|
-| `src/types/camera.ts` | ✅ Extended with LookAtTarget, OrbitConfig, PitchPreset |
-| `src/lib/cameraEasing.ts` | ✅ Added normalizePitch, calculateOrbitPosition, toRadians/toDegrees |
-| `src/lib/cameraPresets.ts` | ✅ Created with scene presets and mode constraints |
-| `src/lib/cameraRenderers.ts` | ✅ Created with MapboxRenderer and CesiumRenderer stubs |
-| `src/hooks/useCameraEngine.ts` | ✅ Added orbitAroundTarget method |
-
----
-
-## Map Overlay Editor (Completed)
-
-A 2D ground overlay editor for placing venue diagrams over the map.
-
-### Files Created
-
-| File | Purpose |
-|------|---------|
-| `src/types/overlay.ts` | MapOverlay data model, BoundingBox, validation |
-| `src/hooks/useOverlayEditor.ts` | Editor state, autosave, undo, drag handlers |
-| `src/hooks/useMapOverlayRenderer.ts` | Mapbox image source + corner/move markers |
-| `src/components/editor/OverlayEditorPanel.tsx` | Right-panel UI with all controls |
-
-### Features
-
-- **Overlay Asset**: Image upload (PNG/SVG), preview, URL copy
-- **Placement Controls**: North/South/East/West inputs, Center/Fit/Reset buttons
-- **Visual Controls**: Opacity slider, Z-order, Fan/Media/Ops visibility toggles
-- **Interaction Tools**: Corner drag handles, move mode, lock toggle
-- **Metadata**: Name, description, Draft/Published/Archived status
-- **Autosave**: 1-second debounce with "Saved" confirmation
-- **Undo**: Single-step undo support
