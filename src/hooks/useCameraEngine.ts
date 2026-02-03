@@ -59,6 +59,9 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
   const [engineState, setEngineState] = useState<CameraEngineState>('idle');
   const [progress, setProgress] = useState(0);
   
+  // Ref to track state for animation loops (avoids stale closure issues)
+  const engineStateRef = useRef<CameraEngineState>('idle');
+  
   // Refs for animation state
   const animationRef = useRef<number | null>(null);
   const currentCameraRef = useRef<CameraState | null>(null);
@@ -69,6 +72,12 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
   const optionsRef = useRef<TransitionOptions>({});
   const driftStartRef = useRef<number>(0);
   const driftBaseRef = useRef<CameraState | null>(null);
+  
+  // Update ref when state changes
+  const updateEngineState = useCallback((newState: CameraEngineState) => {
+    engineStateRef.current = newState;
+    setEngineState(newState);
+  }, []);
   
   // Animation loop for fly-to
   const animationLoop = useCallback((timestamp: number) => {
@@ -106,12 +115,11 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
       animationRef.current = requestAnimationFrame(animationLoop);
     } else {
       // Animation complete
-      setEngineState('idle');
+      updateEngineState('idle');
       setProgress(1);
       optionsRef.current.onComplete?.();
     }
-  }, [onCameraUpdate, constraints]);
-  
+  }, [onCameraUpdate, constraints, updateEngineState]);
   // Drift animation loop
   const driftLoop = useCallback((timestamp: number) => {
     if (!driftBaseRef.current) return;
@@ -137,10 +145,11 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
     currentCameraRef.current = driftedCamera;
     onCameraUpdate(driftedCamera);
     
-    if (engineState === 'drifting') {
+    // Use ref to check state (avoids stale closure)
+    if (engineStateRef.current === 'drifting') {
       animationRef.current = requestAnimationFrame(driftLoop);
     }
-  }, [onCameraUpdate, driftConfig, constraints, engineState]);
+  }, [onCameraUpdate, driftConfig, constraints]);
   
   // Fly to target
   const flyToTarget = useCallback((
@@ -183,11 +192,11 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
     optionsRef.current = transitionOptions;
     
     // Start animation
-    setEngineState('animating');
+    updateEngineState('animating');
     setProgress(0);
     animationStartRef.current = performance.now();
     animationRef.current = requestAnimationFrame(animationLoop);
-  }, [animationLoop]);
+  }, [animationLoop, updateEngineState]);
   
   // Cancel animation
   const cancelAnimation = useCallback(() => {
@@ -195,8 +204,8 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
       cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
     }
-    setEngineState('idle');
-  }, []);
+    updateEngineState('idle');
+  }, [updateEngineState]);
   
   // Start drift motion
   const startDrift = useCallback(() => {
@@ -206,10 +215,10 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
     
     driftBaseRef.current = currentCameraRef.current;
     driftStartRef.current = performance.now();
-    setEngineState('drifting');
+    updateEngineState('drifting');
     
     animationRef.current = requestAnimationFrame(driftLoop);
-  }, [driftLoop]);
+  }, [driftLoop, updateEngineState]);
   
   // Stop drift motion
   const stopDrift = useCallback(() => {
@@ -217,8 +226,8 @@ export function useCameraEngine(options: CameraEngineOptions): CameraEngineRetur
       cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
     }
-    setEngineState('idle');
-  }, []);
+    updateEngineState('idle');
+  }, [updateEngineState]);
   
   // Cleanup on unmount
   useEffect(() => {
