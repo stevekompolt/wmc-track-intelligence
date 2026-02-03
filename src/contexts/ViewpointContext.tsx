@@ -8,6 +8,9 @@ import type { Viewpoint, CameraState, ViewpointFormData, AppMode } from '@/types
 export interface TrackMapRef {
   flyToViewpoint: (viewpoint: Viewpoint) => void;
   captureCamera: () => CameraState | null;
+  setCameraState?: (state: CameraState) => void;
+  setInteractionsEnabled?: (enabled: boolean) => void;
+  getMapInstance?: () => unknown;
 }
 
 interface ViewpointContextValue {

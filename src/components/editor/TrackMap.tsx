@@ -37,6 +37,9 @@ interface TrackMapProps {
 export interface TrackMapHandle {
   flyToViewpoint: (viewpoint: Viewpoint) => void;
   captureCamera: () => CameraState | null;
+  setCameraState: (state: CameraState) => void;
+  setInteractionsEnabled: (enabled: boolean) => void;
+  getMapInstance: () => mapboxgl.Map | null;
 }
 
 export const TrackMap = forwardRef<TrackMapHandle, TrackMapProps>(
@@ -73,6 +76,37 @@ export const TrackMap = forwardRef<TrackMapHandle, TrackMapProps>(
           roll: 0,
         };
       },
+      
+      setCameraState: (state: CameraState) => {
+        if (!map.current) return;
+        
+        map.current.setCenter([state.longitude, state.latitude]);
+        map.current.setZoom(state.height);
+        map.current.setBearing(state.heading);
+        map.current.setPitch(state.pitch);
+      },
+      
+      setInteractionsEnabled: (enabled: boolean) => {
+        if (!map.current) return;
+        
+        if (enabled) {
+          map.current.dragPan.enable();
+          map.current.dragRotate.enable();
+          map.current.scrollZoom.enable();
+          map.current.touchZoomRotate.enable();
+          map.current.doubleClickZoom.enable();
+          map.current.keyboard.enable();
+        } else {
+          map.current.dragPan.disable();
+          map.current.dragRotate.disable();
+          map.current.scrollZoom.disable();
+          map.current.touchZoomRotate.disable();
+          map.current.doubleClickZoom.disable();
+          map.current.keyboard.disable();
+        }
+      },
+      
+      getMapInstance: () => map.current,
     }), []);
 
     useEffect(() => {
