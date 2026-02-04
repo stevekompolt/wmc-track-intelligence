@@ -7,6 +7,7 @@ import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
 import { useFeatureContext } from '@/contexts/FeatureContext';
+import { useOverlayContext } from '@/contexts/OverlayContext';
 import { useSharedFeatureRenderer } from '@/hooks/useSharedFeatureRenderer';
 import mapboxgl from 'mapbox-gl';
 
@@ -14,6 +15,7 @@ export function SharedMapContainer() {
   const { selectedTrack } = useTrackContext();
   const { mapRef } = useViewpointContext();
   const { visibleFeatures, currentMode } = useFeatureContext();
+  const { visibleOverlays } = useOverlayContext();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
 
@@ -32,10 +34,11 @@ export function SharedMapContainer() {
     return () => clearTimeout(timeout);
   }, [mapRef, selectedTrack]);
 
-  // Render features with mode-aware visibility
+  // Render features and overlays with mode-aware visibility
   useSharedFeatureRenderer({
     map: mapInstance,
     features: visibleFeatures,
+    overlays: visibleOverlays,
     currentMode,
   });
 
