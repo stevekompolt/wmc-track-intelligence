@@ -1,69 +1,135 @@
 
-# Unify Overlays with Features for Consistent Visibility Management
-
-## Status: ✅ IMPLEMENTED
+# Add Easy Delete for Map Layers
 
 ## Overview
 
-Overlays and features are now unified in the UI. Each overlay is displayed in the same list as geometric features, allowing them to be toggled on/off with the same visibility controls.
+Make it easy to delete any map layer (features or overlays) by adding delete functionality in two places:
+1. **Delete button in the Overlay Inspector** - Matching the existing pattern in Feature Inspector
+2. **Delete button in the Map Layers list** - Quick delete with confirmation for any item
 
-## Architecture
+## Current State
 
-We chose **Option B: Keep separate but unified UI** - data models remain separate but are presented in a unified interface. This minimizes breaking changes while achieving the goal.
+| Component | Delete Button | Status |
+|-----------|--------------|--------|
+| FeatureInspector | Yes (bottom of panel) | Working |
+| OverlayEditorPanel | No | **Needs adding** |
+| MapItemList | No | **Needs adding** |
 
-## Implemented Files
+## Changes
 
-### New Files
+### 1. Add Delete to OverlayEditorPanel
 
-| File | Purpose |
-|------|---------|
-| `src/contexts/OverlayContext.tsx` | Context for multi-overlay CRUD + visibility state |
-| `src/services/overlaysApi.ts` | Mock API for overlay persistence (mirrors featuresApi) |
-| `src/components/editor/MapItemList.tsx` | Unified list component for features + overlays |
-| `src/components/editor/CollapsibleMapItemList.tsx` | Collapsible wrapper for unified list |
-| `src/hooks/useMultiOverlayRenderer.ts` | Multi-overlay renderer with editing support |
+Add a "Delete Overlay" button at the bottom of the panel (matching the FeatureInspector pattern).
 
-### Modified Files
+**File**: `src/components/editor/OverlayEditorPanel.tsx`
+- Add `onDelete` prop to the component interface
+- Add destructive Button with Trash2 icon below the existing Save/Undo buttons
+- Button text: "Delete Overlay"
+
+### 2. Add Delete to MapItemList
+
+Add a small trash icon button next to each item in the list for quick deletion.
+
+**File**: `src/components/editor/MapItemList.tsx`
+- Add `onDeleteItem` callback prop
+- Add Trash2 icon button next to each item (between eye toggle and status badge)
+- Include confirmation dialog to prevent accidental deletion
+
+### 3. Wire Up Delete in TrackEditor
+
+Connect the new delete callbacks to the context methods.
+
+**File**: `src/pages/TrackEditor.tsx`
+- Pass `onDelete` prop to OverlayEditorPanel, calling `overlayContext.deleteOverlay`
+- Clear selection after deletion
+
+### 4. Update CollapsibleMapItemList
+
+Pass through the delete callback to MapItemList.
+
+**File**: `src/components/editor/CollapsibleMapItemList.tsx`
+- Add `onDeleteItem` prop
+- Forward to MapItemList
+
+## UI Design
+
+### Map Layers List (each row)
+```
+[Icon] Layer Name      [Eye] [Trash] [Status]
+                         ^      ^
+                         |      +-- New delete button
+                         +-- Existing visibility toggle
+```
+
+### Delete Confirmation Dialog
+```
++----------------------------------+
+|  Delete Layer?                   |
+|                                  |
+|  This will permanently delete    |
+|  "Track Surface" from the map.   |
+|                                  |
+|  This action cannot be undone.   |
+|                                  |
+|         [Cancel]  [Delete]       |
++----------------------------------+
+```
+
+### Overlay Inspector (bottom section)
+```
++----------------------------------+
+|  [Undo]  [   Save   ]            |  <- Existing
++----------------------------------+
+|  [     Delete Overlay      ]     |  <- New button
++----------------------------------+
+```
+
+## Technical Details
+
+### MapItemList Props Addition
+
+```typescript
+interface MapItemListProps {
+  // ... existing props
+  onDeleteItem?: (id: string, type: 'feature' | 'overlay') => void;
+}
+```
+
+### OverlayEditorPanel Props Addition
+
+```typescript
+interface OverlayEditorPanelProps {
+  // ... existing props
+  onDelete?: () => void;
+}
+```
+
+### Delete Handler in TrackEditor
+
+```typescript
+const handleDeleteItem = useCallback((id: string, type: SelectionType) => {
+  if (type === 'feature') {
+    setEditingGeometryFeatureId(null);
+    featureContext.deleteFeature(id);
+  } else if (type === 'overlay') {
+    overlayContext.deleteOverlay(id);
+  }
+  handleSelectItem(null, null);
+}, [featureContext, overlayContext, handleSelectItem]);
+```
+
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/App.tsx` | Added OverlayProvider to provider tree |
-| `src/hooks/useSharedFeatureRenderer.ts` | Added overlay rendering for non-editor modes |
-| `src/components/layout/SharedMapContainer.tsx` | Uses OverlayContext for overlay visibility |
-| `src/pages/TrackEditor.tsx` | Removed Overlay tab, unified into single Features view with Image button |
+| `src/components/editor/MapItemList.tsx` | Add delete button with confirmation dialog |
+| `src/components/editor/CollapsibleMapItemList.tsx` | Pass through delete callback |
+| `src/components/editor/OverlayEditorPanel.tsx` | Add delete button at bottom |
+| `src/pages/TrackEditor.tsx` | Wire up delete handlers |
 
-## Key Changes
+## Benefits
 
-1. **Unified Map Layers List**: Features and overlays appear in a single "MAP LAYERS" list
-2. **Single Toolbox**: Added "Image" button alongside Point/Line/Polygon for creating overlays
-3. **Dynamic Inspector**: Shows OverlayEditorPanel when overlay selected, FeatureInspector when feature selected
-4. **Eye Toggle**: Both features and overlays have visibility toggles in the list
-5. **Mode-aware visibility**: Overlays respect visibleToFans/Media/Ops flags like features
-
-## Visual Result
-
-```text
-FEATURE TOOLBOX
-+--------+  +--------+  +--------+  +--------+  +--------+  +--------+
-| Point  |  | Line   |  | Polygon|  | Image  |  |Viewpoint| | Detect |
-+--------+  +--------+  +--------+  +--------+  +--------+  +--------+
-
-MAP LAYERS (4)
-+-------------------------------------------+
-| [Img] Track Map Overlay       👁 pub       |  <- Overlay
-| [Hex] Track Surface           👁 draft     |  <- Feature
-| [Pin] Start Line              👁 draft     |  <- Feature
-| [Img] Sponsor Banner          🚫 draft     |  <- Overlay (hidden)
-+-------------------------------------------+
-
-FEATURE INSPECTOR / OVERLAY INSPECTOR
-(Dynamic based on selection)
-```
-
-## Benefits Achieved
-
-1. ✅ Single list to manage all map content
-2. ✅ Consistent visibility toggle behavior
-3. ✅ Multiple overlays supported
-4. ✅ Same mode-aware visibility for overlays
-5. ✅ Familiar UI pattern - no separate tabs
+1. Consistent delete UX across features and overlays
+2. Quick delete from list without needing to open inspector
+3. Confirmation dialog prevents accidental deletions
+4. Follows existing patterns used by FeatureInspector
