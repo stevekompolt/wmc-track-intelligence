@@ -37,7 +37,19 @@ export function useFeatureRenderer({
   const sourceAddedRef = useRef(false);
   const previewSourceAddedRef = useRef(false);
 
-  // Convert features to GeoJSON FeatureCollection
+  // Refs for mutable values to avoid stale closures in setupLayers
+  const featuresRef = useRef(features);
+  const hiddenFeatureIdsRef = useRef(hiddenFeatureIds);
+  const selectedFeatureIdRef = useRef(selectedFeatureId);
+
+  // Keep refs updated synchronously
+  useEffect(() => {
+    featuresRef.current = features;
+    hiddenFeatureIdsRef.current = hiddenFeatureIds;
+    selectedFeatureIdRef.current = selectedFeatureId;
+  });
+
+  // Convert features to GeoJSON FeatureCollection - STABLE (uses refs)
   const toGeoJSON = useCallback((featureList: VenueFeature[]): GeoJSON.FeatureCollection => {
     return {
       type: 'FeatureCollection',
@@ -53,12 +65,12 @@ export function useFeatureRenderer({
           strokeWidth: f.style.strokeWidth,
           fillColor: f.style.fillColor,
           fillOpacity: f.style.fillOpacity,
-          selected: f.id === selectedFeatureId,
+          selected: f.id === selectedFeatureIdRef.current,
         },
         geometry: f.geometry as GeoJSON.Geometry,
       })),
     };
-  }, [selectedFeatureId]);
+  }, []); // No dependencies - uses ref for selectedFeatureId
 
   // Create preview GeoJSON for drawing in progress
   const createPreviewGeoJSON = useCallback((): GeoJSON.FeatureCollection => {
@@ -128,7 +140,7 @@ export function useFeatureRenderer({
     return { type: 'FeatureCollection', features };
   }, [partialCoords, drawingMode]);
 
-  // Initialize sources and layers - includes features in deps to ensure data stays in sync
+  // Initialize sources and layers - STABLE (uses refs for mutable data)
   useEffect(() => {
     if (!map) return;
 
@@ -267,12 +279,13 @@ export function useFeatureRenderer({
         }
       });
       
-      // CRITICAL: Immediately update source data after confirming source exists
-      // This fixes the race condition where the data effect runs before source is ready
+      // CRITICAL: Use refs to get current data (avoids stale closure)
       const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
       if (source) {
-        const renderableFeatures = features.filter(f => 
-          f.id !== editingGeometryFeatureId && !hiddenFeatureIds.has(f.id)
+        // DON'T filter out editingGeometryFeatureId - keep feature visible during editing
+        // The geometry editor adds vertex markers ON TOP of the existing feature
+        const renderableFeatures = featuresRef.current.filter(f => 
+          !hiddenFeatureIdsRef.current.has(f.id)
         );
         source.setData(toGeoJSON(renderableFeatures));
       }
@@ -312,22 +325,24 @@ export function useFeatureRenderer({
       sourceAddedRef.current = false;
       previewSourceAddedRef.current = false;
     };
-  }, [map, toGeoJSON]);
+  }, [map, toGeoJSON]); // ONLY map and toGeoJSON (which is now stable)
 
-  // Update features data (filter out feature being edited geometrically and hidden features)
+  // Update features data - handles selection, visibility toggles, and feature changes
+  // DON'T filter out editingGeometryFeatureId - keep feature visible during editing
   useEffect(() => {
     if (!map || !sourceAddedRef.current) return;
 
     const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
     if (source) {
-      // Hide the feature being edited (it's rendered by vertex markers instead)
-      // Also hide features that are toggled off in the feature list
+      // Only filter out hidden features - keep edited feature visible
       const renderableFeatures = features.filter(f => 
-        f.id !== editingGeometryFeatureId && !hiddenFeatureIds.has(f.id)
+        !hiddenFeatureIds.has(f.id)
       );
       source.setData(toGeoJSON(renderableFeatures));
     }
-  }, [map, features, toGeoJSON, editingGeometryFeatureId, hiddenFeatureIds]);
+  }, [map, features, toGeoJSON, hiddenFeatureIds, selectedFeatureId]);
+  // NOTE: selectedFeatureId is needed to update "selected" property even though toGeoJSON uses ref
+  // NOTE: editingGeometryFeatureId removed - we keep the feature visible during editing
 
   // Update preview data
   useEffect(() => {
