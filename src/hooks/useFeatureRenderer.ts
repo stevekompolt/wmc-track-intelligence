@@ -128,7 +128,7 @@ export function useFeatureRenderer({
     return { type: 'FeatureCollection', features };
   }, [partialCoords, drawingMode]);
 
-  // Initialize sources and layers
+  // Initialize sources and layers - includes features in deps to ensure data stays in sync
   useEffect(() => {
     if (!map) return;
 
@@ -259,13 +259,23 @@ export function useFeatureRenderer({
       
       previewSourceAddedRef.current = true;
       
-      // Ensure layers are visible (they may have been hidden)
+      // Ensure layers are visible (they may have been hidden when leaving editor)
       const allLayers = [LAYER_POLYGONS_FILL, LAYER_POLYGONS_STROKE, LAYER_LINES, LAYER_POINTS, LAYER_PREVIEW, `${LAYER_PREVIEW}-points`];
       allLayers.forEach(layerId => {
         if (map.getLayer(layerId)) {
           map.setLayoutProperty(layerId, 'visibility', 'visible');
         }
       });
+      
+      // CRITICAL: Immediately update source data after confirming source exists
+      // This fixes the race condition where the data effect runs before source is ready
+      const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
+      if (source) {
+        const renderableFeatures = features.filter(f => 
+          f.id !== editingGeometryFeatureId && !hiddenFeatureIds.has(f.id)
+        );
+        source.setData(toGeoJSON(renderableFeatures));
+      }
     };
 
     if (map.isStyleLoaded()) {
@@ -302,7 +312,7 @@ export function useFeatureRenderer({
       sourceAddedRef.current = false;
       previewSourceAddedRef.current = false;
     };
-  }, [map]);
+  }, [map, features, editingGeometryFeatureId, hiddenFeatureIds, toGeoJSON]);
 
   // Update features data (filter out feature being edited geometrically and hidden features)
   useEffect(() => {
