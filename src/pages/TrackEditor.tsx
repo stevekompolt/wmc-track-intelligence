@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon, ChevronDown } from 'lucide-react';
+import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon, ChevronDown, Scan } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,6 +8,7 @@ import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog
 import { OverlayEditorPanel } from '@/components/editor/OverlayEditorPanel';
 import { FeatureInspector } from '@/components/editor/FeatureInspector';
 import { CollapsibleFeatureList } from '@/components/editor/CollapsibleFeatureList';
+import { DetectTrackDialog } from '@/components/editor/DetectTrackDialog';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
 import { useOverlayEditor } from '@/hooks/useOverlayEditor';
@@ -16,8 +17,9 @@ import { useFeatureEditor } from '@/hooks/useFeatureEditor';
 import { useFeatureDrawing } from '@/hooks/useFeatureDrawing';
 import { useFeatureRenderer } from '@/hooks/useFeatureRenderer';
 import { useFeatureGeometryEditor } from '@/hooks/useFeatureGeometryEditor';
+import { useAsphaltDetection } from '@/hooks/useAsphaltDetection';
 import type { CornerHandle, VenueCoords } from '@/types/overlay';
-import type { FeatureType, FeatureGeometry } from '@/types/feature';
+import type { FeatureType, FeatureGeometry, PolygonGeometry } from '@/types/feature';
 import { DEFAULT_FEATURE_STYLE } from '@/types/feature';
 import mapboxgl from 'mapbox-gl';
 
@@ -84,6 +86,27 @@ export default function TrackEditor() {
   const handleFeatureComplete = useCallback((type: FeatureType, geometry: FeatureGeometry) => {
     featureEditor.createFeature(type, geometry, DEFAULT_FEATURE_STYLE);
   }, [featureEditor]);
+
+  // Handle detected polygon from asphalt detection
+  const handleDetectionComplete = useCallback(async (geometry: PolygonGeometry) => {
+    const feature = await featureEditor.createFeature('polygon', geometry, {
+      ...DEFAULT_FEATURE_STYLE,
+      color: '#333333',
+      fillColor: '#333333',
+      fillOpacity: 0.3,
+    });
+    // Update name and description after creation
+    if (feature) {
+      await featureEditor.updateName(feature.id, 'Track Surface');
+      await featureEditor.updateDescription(feature.id, 'Auto-detected track surface');
+    }
+  }, [featureEditor]);
+
+  // Asphalt detection hook
+  const asphaltDetection = useAsphaltDetection({
+    map: mapInstance,
+    onDetectionComplete: handleDetectionComplete,
+  });
 
   // Feature drawing hook
   const featureDrawing = useFeatureDrawing({
@@ -334,6 +357,23 @@ export default function TrackEditor() {
                         </TooltipTrigger>
                         <TooltipContent side="bottom">Save current camera position</TooltipContent>
                       </Tooltip>
+                      
+                      {/* Detect Track - auto-detect asphalt */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 justify-start gap-2 hover:border-primary hover:text-primary col-span-2"
+                            onClick={asphaltDetection.openDialog}
+                            disabled={featureDrawing.isDrawing}
+                          >
+                            <Scan className="h-4 w-4" />
+                            <span className="text-xs">Detect Track</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Auto-detect track surface from satellite imagery</TooltipContent>
+                      </Tooltip>
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground font-mono">
@@ -440,6 +480,18 @@ export default function TrackEditor() {
       <SaveViewpointDialog 
         open={saveDialogOpen} 
         onOpenChange={setSaveDialogOpen} 
+      />
+      
+      {/* Detect Track Dialog */}
+      <DetectTrackDialog
+        open={asphaltDetection.isDialogOpen}
+        isDetecting={asphaltDetection.isDetecting}
+        detectedCoords={asphaltDetection.detectedCoords}
+        thresholds={asphaltDetection.thresholds}
+        onClose={asphaltDetection.closeDialog}
+        onRunDetection={asphaltDetection.runDetection}
+        onApply={asphaltDetection.applyDetection}
+        onUpdateThreshold={asphaltDetection.updateThreshold}
       />
     </div>
   );
