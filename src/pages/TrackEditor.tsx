@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon } from 'lucide-react';
+import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog';
 import { OverlayEditorPanel } from '@/components/editor/OverlayEditorPanel';
 import { FeatureInspector } from '@/components/editor/FeatureInspector';
@@ -238,90 +239,95 @@ export default function TrackEditor() {
 
         {editorMode === 'features' ? (
           <>
-            {/* Feature Toolbox */}
-            <div className="p-3 border-b border-border">
-              <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
-                <Layers className="h-4 w-4 text-primary" />
-                FEATURE TOOLBOX
-              </h2>
-            </div>
-            <div className="p-3 border-b border-border">
-              {selectedTrack ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Add Point */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={featureDrawing.mode === 'point' ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-9 justify-start gap-2"
-                        onClick={() => handleStartDrawing('point')}
-                        disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'point'}
-                      >
-                        <MapPin className="h-4 w-4" />
-                        <span className="text-xs">Point</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Place a point marker</TooltipContent>
-                  </Tooltip>
-                  
-                  {/* Add Line */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={featureDrawing.mode === 'line' ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-9 justify-start gap-2"
-                        onClick={() => handleStartDrawing('line')}
-                        disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'line'}
-                      >
-                        <Spline className="h-4 w-4" />
-                        <span className="text-xs">Line</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Draw a line path</TooltipContent>
-                  </Tooltip>
-                  
-                  {/* Add Polygon */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={featureDrawing.mode === 'polygon' ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-9 justify-start gap-2"
-                        onClick={() => handleStartDrawing('polygon')}
-                        disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'polygon'}
-                      >
-                        <Hexagon className="h-4 w-4" />
-                        <span className="text-xs">Polygon</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Draw an area polygon</TooltipContent>
-                  </Tooltip>
-                  
-                  {/* Save Viewpoint - functional */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 justify-start gap-2 hover:border-primary hover:text-primary"
-                        onClick={() => setSaveDialogOpen(true)}
-                        disabled={featureDrawing.isDrawing}
-                      >
-                        <Camera className="h-4 w-4" />
-                        <span className="text-xs">Viewpoint</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Save current camera position</TooltipContent>
-                  </Tooltip>
+            {/* Feature Toolbox - Collapsible */}
+            <Collapsible defaultOpen>
+              <CollapsibleTrigger className="w-full p-3 border-b border-border flex items-center justify-between hover:bg-muted/50 transition-colors">
+                <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-primary" />
+                  FEATURE TOOLBOX
+                </h2>
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="p-3 border-b border-border">
+                  {selectedTrack ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Add Point */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={featureDrawing.mode === 'point' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-9 justify-start gap-2"
+                            onClick={() => handleStartDrawing('point')}
+                            disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'point'}
+                          >
+                            <MapPin className="h-4 w-4" />
+                            <span className="text-xs">Point</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Place a point marker</TooltipContent>
+                      </Tooltip>
+                      
+                      {/* Add Line */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={featureDrawing.mode === 'line' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-9 justify-start gap-2"
+                            onClick={() => handleStartDrawing('line')}
+                            disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'line'}
+                          >
+                            <Spline className="h-4 w-4" />
+                            <span className="text-xs">Line</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Draw a line path</TooltipContent>
+                      </Tooltip>
+                      
+                      {/* Add Polygon */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={featureDrawing.mode === 'polygon' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-9 justify-start gap-2"
+                            onClick={() => handleStartDrawing('polygon')}
+                            disabled={featureDrawing.isDrawing && featureDrawing.mode !== 'polygon'}
+                          >
+                            <Hexagon className="h-4 w-4" />
+                            <span className="text-xs">Polygon</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Draw an area polygon</TooltipContent>
+                      </Tooltip>
+                      
+                      {/* Save Viewpoint - functional */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 justify-start gap-2 hover:border-primary hover:text-primary"
+                            onClick={() => setSaveDialogOpen(true)}
+                            disabled={featureDrawing.isDrawing}
+                          >
+                            <Camera className="h-4 w-4" />
+                            <span className="text-xs">Viewpoint</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Save current camera position</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground font-mono">
+                      Select a track to begin editing
+                    </p>
+                  )}
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground font-mono">
-                  Select a track to begin editing
-                </p>
-              )}
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
             
             {/* Feature List */}
             <div className="p-3 border-b border-border">
