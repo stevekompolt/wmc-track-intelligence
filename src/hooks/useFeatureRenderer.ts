@@ -312,7 +312,7 @@ export function useFeatureRenderer({
       sourceAddedRef.current = false;
       previewSourceAddedRef.current = false;
     };
-  }, [map, features, editingGeometryFeatureId, hiddenFeatureIds, toGeoJSON]);
+  }, [map, toGeoJSON]);
 
   // Update features data (filter out feature being edited geometrically and hidden features)
   useEffect(() => {
