@@ -133,13 +133,15 @@ export function useFeatureRenderer({
     if (!map) return;
 
     const setupLayers = () => {
-      // Add main features source
-      if (!map.getSource(SOURCE_ID)) {
+      // Check if layers already exist (may have been left from previous session)
+      const needsSetup = !map.getSource(SOURCE_ID);
+      
+      if (needsSetup) {
+        // Add main features source
         map.addSource(SOURCE_ID, {
           type: 'geojson',
           data: { type: 'FeatureCollection', features: [] },
         });
-        sourceAddedRef.current = true;
 
         // Polygon fill layer
         map.addLayer({
@@ -206,14 +208,15 @@ export function useFeatureRenderer({
           },
         });
       }
+      
+      sourceAddedRef.current = true;
 
-      // Add preview source for drawing
+      // Add preview source for drawing (if not exists)
       if (!map.getSource(PREVIEW_SOURCE_ID)) {
         map.addSource(PREVIEW_SOURCE_ID, {
           type: 'geojson',
           data: { type: 'FeatureCollection', features: [] },
         });
-        previewSourceAddedRef.current = true;
 
         // Preview layer - dashed line for work in progress
         map.addLayer({
@@ -253,6 +256,16 @@ export function useFeatureRenderer({
           },
         });
       }
+      
+      previewSourceAddedRef.current = true;
+      
+      // Ensure layers are visible (they may have been hidden)
+      const allLayers = [LAYER_POLYGONS_FILL, LAYER_POLYGONS_STROKE, LAYER_LINES, LAYER_POINTS, LAYER_PREVIEW, `${LAYER_PREVIEW}-points`];
+      allLayers.forEach(layerId => {
+        if (map.getLayer(layerId)) {
+          map.setLayoutProperty(layerId, 'visibility', 'visible');
+        }
+      });
     };
 
     if (map.isStyleLoaded()) {
@@ -260,21 +273,30 @@ export function useFeatureRenderer({
     } else {
       map.once('style.load', setupLayers);
     }
+    
+    // Re-setup on style changes (layer switching)
+    const handleStyleLoad = () => {
+      sourceAddedRef.current = false;
+      previewSourceAddedRef.current = false;
+      setupLayers();
+    };
+    map.on('style.load', handleStyleLoad);
 
     return () => {
-      // Cleanup layers and sources when component unmounts
+      map.off('style.load', handleStyleLoad);
+      
+      // DON'T clean up layers on unmount - they should persist on the shared map
+      // Just hide them instead so they can be shown again when returning to editor
       if (map && map.getStyle()) {
         try {
-          if (map.getLayer(`${LAYER_PREVIEW}-points`)) map.removeLayer(`${LAYER_PREVIEW}-points`);
-          if (map.getLayer(LAYER_PREVIEW)) map.removeLayer(LAYER_PREVIEW);
-          if (map.getLayer(LAYER_POINTS)) map.removeLayer(LAYER_POINTS);
-          if (map.getLayer(LAYER_LINES)) map.removeLayer(LAYER_LINES);
-          if (map.getLayer(LAYER_POLYGONS_STROKE)) map.removeLayer(LAYER_POLYGONS_STROKE);
-          if (map.getLayer(LAYER_POLYGONS_FILL)) map.removeLayer(LAYER_POLYGONS_FILL);
-          if (map.getSource(PREVIEW_SOURCE_ID)) map.removeSource(PREVIEW_SOURCE_ID);
-          if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+          const allLayers = [LAYER_POLYGONS_FILL, LAYER_POLYGONS_STROKE, LAYER_LINES, LAYER_POINTS, LAYER_PREVIEW, `${LAYER_PREVIEW}-points`];
+          allLayers.forEach(layerId => {
+            if (map.getLayer(layerId)) {
+              map.setLayoutProperty(layerId, 'visibility', 'none');
+            }
+          });
         } catch (e) {
-          // Ignore cleanup errors
+          // Ignore errors
         }
       }
       sourceAddedRef.current = false;
