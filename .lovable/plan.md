@@ -1,193 +1,174 @@
 
+# Unify Overlays with Features for Consistent Visibility Management
 
-# Fix Feature Disappearing on Click and Geometry Editing
+## Overview
 
-## Problem Summary
+Currently, overlays and features are separate systems with different UI, state management, and rendering. This plan integrates overlays into the feature list so they can be toggled on/off just like geometric features, supporting multiple overlays.
 
-Two related bugs are causing features to disappear:
+## Architecture Approach
 
-1. **Feature disappears on click** - Clicking a feature to select it makes it vanish
-2. **Feature disappears when starting geometry editing** - The feature vanishes immediately when entering edit mode
+Two options were considered:
 
-## Root Cause Analysis
+| Option | Description | Pros | Cons |
+|--------|-------------|------|------|
+| A: Merge into VenueFeature | Add `type: 'overlay'` to VenueFeature with overlay-specific fields | Single unified list, simple visibility | Requires schema changes, complex type unions |
+| B: Keep separate but unified UI | Keep MapOverlay type but display in same list, same visibility state | Minimal type changes, cleaner separation | Two data sources to sync |
 
-### Issue 1: Stale Closure in setupLayers
+**Recommended: Option B** - Keep data models separate but present a unified UI. This minimizes breaking changes while achieving the goal.
 
-In `useFeatureRenderer.ts`, the `setupLayers` function (lines 135-279) captures `features`, `editingGeometryFeatureId`, and `hiddenFeatureIds` in its closure when the effect runs. However, these values were removed from the effect dependencies in the last fix, which means:
+## Data Model Changes
 
-- The initialization effect runs once with `[map, toGeoJSON]` as dependencies
-- `setupLayers` is defined with the **initial values** of `features`, `editingGeometryFeatureId`, and `hiddenFeatureIds`
-- When `style.load` event fires or the effect re-runs, `setupLayers` uses **stale values**
-- This can cause the source to be updated with outdated data, filtering out features incorrectly
+### New: `src/types/overlay.ts` additions
 
-### Issue 2: Geometry Editing Layer Race Condition
+Add helper to convert overlay to a "list item" format compatible with feature list rendering.
 
-When geometry editing starts:
+### New: `src/contexts/OverlayContext.tsx`
 
-1. `editingGeometryFeatureId` is set in TrackEditor
-2. The data-update effect in `useFeatureRenderer` runs and filters out that feature
-3. `useFeatureGeometryEditor` should create preview layers to show the feature
-4. **BUT**: The geometry editor's effect has `feature?.id` in its dependencies, and when the feature reference changes (which happens on every update), it runs cleanup (`removeEditingLayers`) then tries to recreate
-5. The `createLayersAndMarkers` function checks `editingLayersAddedRef.current` to avoid duplicate creation, but after cleanup it's set to `false`
-6. If `map.isStyleLoaded()` returns false during this transition, the layers never get created
+Create a context to manage multiple overlays (similar to FeatureContext):
+- `overlays: MapOverlay[]` - All overlays for current venue
+- `selectedOverlay: MapOverlay | null`
+- `hiddenOverlayIds: Set<string>` - Local visibility toggle (matches hiddenFeatureIds pattern)
+- CRUD operations for multiple overlays
 
-### Issue 3: toGeoJSON Dependency on selectedFeatureId
+## UI Changes
 
-The `toGeoJSON` callback depends on `selectedFeatureId` (line 61). When a feature is clicked:
+### File: `src/components/editor/FeatureList.tsx`
 
-1. `onFeatureClick` triggers `selectFeature(featureId)`
-2. `selectedFeatureId` changes in FeatureContext
-3. `toGeoJSON` is recreated (new callback reference)
-4. The initialization effect (which depends on `toGeoJSON`) runs its cleanup
-5. Cleanup hides all layers with `visibility: 'none'`
-6. The effect then re-runs `setupLayers` which shows them again
-7. This causes a **flicker** and if there's a timing issue, the feature may stay hidden
+Rename to `MapItemList.tsx` and accept both features AND overlays as a unified list:
 
-## Solution
+```
+type MapItem = 
+  | { type: 'feature'; data: VenueFeature }
+  | { type: 'overlay'; data: MapOverlay };
+```
 
-### Fix 1: Use Refs for Mutable State in setupLayers
+Each item displays:
+- Icon (Point/Line/Polygon/Image icon for overlay)
+- Name
+- Eye toggle
+- Status badge
 
-Store `features`, `editingGeometryFeatureId`, and `hiddenFeatureIds` in refs so `setupLayers` always accesses current values without being in the dependency array.
+### File: `src/components/editor/CollapsibleFeatureList.tsx`
 
-### Fix 2: Remove selectedFeatureId from toGeoJSON Dependencies
+Update to show combined list of features + overlays, with section headers:
+- "Overlays (2)" collapsible section
+- "Features (5)" collapsible section
 
-The `selected` property can be computed during render using a ref, preventing the callback from being recreated on every selection change.
+OR: Single unified list sorted by zOrder
 
-### Fix 3: Keep Feature Visible During Geometry Editing
+### File: `src/pages/TrackEditor.tsx`
 
-Instead of filtering out `editingGeometryFeatureId` from the main renderer, keep it visible and let the geometry editor add vertex markers **on top**. This ensures no gap where the feature is invisible.
+- Remove separate "Overlay" tab
+- Integrate overlay creation into Feature Toolbox (add "Image Overlay" button)
+- When overlay is selected, show OverlayEditorPanel in the inspector area
+- When feature is selected, show FeatureInspector
 
-Alternatively, ensure the geometry editor creates its preview layers **before** the main renderer hides the feature by coordinating the timing.
+## Rendering Changes
 
-## Files to Modify
+### File: `src/hooks/useMapOverlayRenderer.ts`
+
+Update to support multiple overlays:
+- Accept `overlays: MapOverlay[]` instead of single `overlay`
+- Accept `hiddenOverlayIds: Set<string>` for visibility filtering
+- Create unique source/layer IDs per overlay: `overlay-image-{id}`, `overlay-layer-{id}`
+- Only render overlays not in hiddenOverlayIds
+
+### File: `src/hooks/useSharedFeatureRenderer.ts`
+
+Add overlay rendering for non-editor modes:
+- Filter overlays by mode visibility flags (visibleToFans, etc.)
+- Use same source/layer ID pattern
+
+## New Files
+
+| File | Purpose |
+|------|---------|
+| `src/contexts/OverlayContext.tsx` | Manage multiple overlays with CRUD + visibility |
+| `src/services/overlaysApi.ts` | Mock API for overlay persistence (mirrors featuresApi) |
+| `src/components/editor/MapItemList.tsx` | Unified list component for features + overlays |
+
+## Modified Files
 
 | File | Changes |
 |------|---------|
-| `src/hooks/useFeatureRenderer.ts` | Use refs for mutable values; stabilize toGeoJSON; don't hide feature being edited from main source |
-| `src/hooks/useFeatureGeometryEditor.ts` | Improve layer creation timing; don't rely on effect cleanup/recreation cycle |
+| `src/types/overlay.ts` | Add list item conversion helper |
+| `src/hooks/useMapOverlayRenderer.ts` | Support multiple overlays + hiddenOverlayIds |
+| `src/hooks/useSharedFeatureRenderer.ts` | Add overlay rendering for non-editor modes |
+| `src/pages/TrackEditor.tsx` | Remove Overlay tab, unify into single Features view |
+| `src/components/editor/OverlayEditorPanel.tsx` | Minor: accept overlay from context instead of props |
+| `src/components/layout/SharedMapContainer.tsx` | Add OverlayContext provider + renderer |
+| `src/App.tsx` | Add OverlayProvider to provider tree |
 
-## Technical Changes
+## Technical Implementation
 
-### `useFeatureRenderer.ts`
-
-**Add refs for mutable values:**
-
-```typescript
-const featuresRef = useRef(features);
-const editingGeometryFeatureIdRef = useRef(editingGeometryFeatureId);
-const hiddenFeatureIdsRef = useRef(hiddenFeatureIds);
-const selectedFeatureIdRef = useRef(selectedFeatureId);
-
-// Keep refs updated
-useEffect(() => {
-  featuresRef.current = features;
-  editingGeometryFeatureIdRef.current = editingGeometryFeatureId;
-  hiddenFeatureIdsRef.current = hiddenFeatureIds;
-  selectedFeatureIdRef.current = selectedFeatureId;
-});
-```
-
-**Stabilize toGeoJSON:**
-
-Remove `selectedFeatureId` from the dependency array and use the ref instead:
+### Phase 1: Create OverlayContext (similar to FeatureContext)
 
 ```typescript
-const toGeoJSON = useCallback((featureList: VenueFeature[]): GeoJSON.FeatureCollection => {
-  return {
-    type: 'FeatureCollection',
-    features: featureList.map(f => ({
-      // ...
-      selected: f.id === selectedFeatureIdRef.current,
-      // ...
-    })),
-  };
-}, []); // No dependencies - uses ref
+// src/contexts/OverlayContext.tsx
+interface OverlayContextType {
+  overlays: MapOverlay[];
+  selectedOverlay: MapOverlay | null;
+  selectOverlay: (id: string | null) => void;
+  hiddenOverlayIds: Set<string>;
+  toggleOverlayVisibility: (id: string) => void;
+  createOverlay: () => Promise<MapOverlay>;
+  updateOverlay: (id: string, updates: Partial<MapOverlay>) => void;
+  deleteOverlay: (id: string) => void;
+}
 ```
 
-**Update setupLayers to use refs:**
+### Phase 2: Multi-Overlay Renderer
 
-```typescript
-const setupLayers = () => {
-  // ... layer creation code ...
-  
-  const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
-  if (source) {
-    // DON'T filter out editingGeometryFeatureId - let it stay visible
-    // The geometry editor adds markers on top, not replacing the feature
-    const renderableFeatures = featuresRef.current.filter(f => 
-      !hiddenFeatureIdsRef.current.has(f.id)
-    );
-    source.setData(toGeoJSON(renderableFeatures));
-  }
-};
+Update useMapOverlayRenderer to iterate over multiple overlays:
+- For each visible overlay, create source `overlay-image-{overlay.id}`
+- Create layer `overlay-layer-{overlay.id}` with opacity from overlay settings
+- Sort by zOrder for proper stacking
+
+### Phase 3: Unified Map Item List
+
+Create component that renders both features and overlays in one list:
+- Overlay items use Image icon
+- Clicking overlay selects it and shows OverlayEditorPanel
+- Eye toggle updates hiddenOverlayIds
+- Same styling as feature items
+
+### Phase 4: Remove Overlay Tab
+
+Update TrackEditor to show single unified view:
+- Add "Image" button to Feature Toolbox for creating overlays
+- Inspector area dynamically shows FeatureInspector or OverlayEditorPanel based on selection
+
+## Visual Mockup
+
+```text
+FEATURE TOOLBOX
++--------+  +--------+  +--------+  +--------+
+| Point  |  | Line   |  | Polygon|  | Image  |  <- NEW
++--------+  +--------+  +--------+  +--------+
+
+MAP LAYERS (7)
++-------------------------------------------+
+| [Img] Track Map Overlay      [F][O] 👁 pub |  <- Overlay
+| [Hex] Track Surface          [F][M][O] 👁  |  <- Feature
+| [Pin] Start Line             [F] 👁 draft  |  <- Feature
+| [Img] Sponsor Banner         [F] 🚫 draft  |  <- Overlay (hidden)
++-------------------------------------------+
+
+INSPECTOR
+(Shows OverlayEditorPanel when overlay selected)
+(Shows FeatureInspector when feature selected)
 ```
 
-**Update data effect similarly:**
+## Benefits
 
-```typescript
-useEffect(() => {
-  if (!map || !sourceAddedRef.current) return;
+1. Single list to manage all map content
+2. Consistent visibility toggle behavior across all item types
+3. Multiple overlays supported
+4. Same mode-aware visibility (Fan/Media/Ops) for overlays
+5. Familiar UI pattern - no new concepts to learn
 
-  const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
-  if (source) {
-    // Keep editingGeometryFeatureId visible - geometry editor adds markers on top
-    const renderableFeatures = features.filter(f => 
-      !hiddenFeatureIds.has(f.id)
-    );
-    source.setData(toGeoJSON(renderableFeatures));
-  }
-}, [map, features, toGeoJSON, hiddenFeatureIds]);
-// NOTE: editingGeometryFeatureId removed from deps AND from filter
-```
+## Migration Notes
 
-### `useFeatureGeometryEditor.ts`
-
-**Don't clean up layers when feature reference changes:**
-
-The current effect runs cleanup when `feature?.id` changes OR when `isEditing` changes. But it also re-runs when the `feature` object reference changes (even with same ID).
-
-Fix by checking if we actually need to recreate layers:
-
-```typescript
-useEffect(() => {
-  if (!isEditing || !map || !feature) {
-    // Only cleanup when truly stopping editing
-    if (!isEditing || !feature) {
-      clearMarkers();
-      removeEditingLayers();
-      currentFeatureIdRef.current = null;
-    }
-    return;
-  }
-
-  // Only do full cleanup and recreation when feature ID changes
-  const featureChanged = currentFeatureIdRef.current !== feature.id;
-  
-  if (featureChanged) {
-    currentFeatureIdRef.current = feature.id;
-    clearMarkers();
-    removeEditingLayers();
-    
-    // Create new layers and markers
-    const createLayersAndMarkers = () => { /* ... */ };
-    
-    if (map.isStyleLoaded()) {
-      createLayersAndMarkers();
-    } else {
-      map.once('style.load', createLayersAndMarkers);
-    }
-  }
-  
-  // No cleanup function - layers persist until explicitly removed
-}, [isEditing, map, feature?.id]);
-```
-
-## Result
-
-After these changes:
-
-1. Clicking a feature will select it without any flicker or disappearance
-2. Starting geometry editing will keep the feature visible with vertex markers overlaid
-3. The eye icon visibility toggle will work smoothly without affecting unrelated features
-4. Switching between modes will preserve feature visibility correctly
-
+- Existing single overlay data will be migrated to array format
+- Local storage key changes from single overlay to array
+- No breaking changes to feature data
