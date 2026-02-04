@@ -1,142 +1,120 @@
 
 
-# Fix Line Feature Editing, Stroke Width, and Improve Track Detection
+# Fix Feature Visibility When Switching Between Modes
 
-## Issues Identified
+## Problem Summary
 
-Based on my investigation, there are three distinct issues to address:
-
-### Issue 1: Line disappears when clicking "Edit Geometry"
-
-**Root Cause:** A race condition in `useFeatureGeometryEditor.ts`. The effect sequence is:
-1. `removeEditingLayers()` is called immediately, setting `editingLayersAddedRef.current = false`
-2. Then `createLayersAndMarkers()` is called which tries to add source and layers
-3. However, the `removeEditingLayers()` cleanup tries to remove layers that may not exist yet, and the subsequent source/layer creation has timing issues with the effect dependencies
-
-The main problem is that `feature` is in the dependency array, causing the entire cleanup and recreation cycle to run when the feature reference changes (even if the ID is the same). This combined with the `clearMarkers()` and `removeEditingLayers()` at the start means the layers get removed but may not be properly recreated.
-
-### Issue 2: Stroke Width slider has no visible effect
-
-**Root Cause:** In `useFeatureRenderer.ts`, the stroke width works correctly, but the rendering uses expression-based paint properties that read `strokeWidth` from the feature properties. The property IS being passed correctly, but when testing, users often have the feature selected - and selected features are hardcoded to width `4`.
-
-Additionally, the layer needs to be updated when feature properties change. The current code only updates the source data, but Mapbox paint properties that use data-driven expressions should be working. Let me verify the property is being passed in the GeoJSON conversion - yes it is on line 53.
-
-The actual issue may be that the slider range is 1-8px which is very subtle, especially on satellite imagery. Also need to verify the property update is propagating.
-
-### Issue 3: Detect Track feature doesn't use the traced track line
-
-**Current Behavior:** The "Detect Track" feature does a whole-canvas pixel analysis looking for dark asphalt. It has no concept of using an existing line as a guide or boundary.
-
-**User Expectation:** If a user has already traced the track centerline with a Line feature, the detection should use that line as a guide - either to constrain the detection area or to create a buffer/corridor around the line.
+Features disappear when navigating back to the Track Editor from other views (Fan, Media, Ops). The issue is a **timing and state synchronization problem** between two feature renderers that share the same map but manage layers independently.
 
 ---
 
-## Technical Changes
+## Root Cause Analysis
 
-### File 1: `src/hooks/useFeatureGeometryEditor.ts`
+There are two feature renderers in the system:
 
-Fix the layer creation to ensure LineString features are properly displayed during editing:
+| Renderer | Location | Purpose |
+|----------|----------|---------|
+| `useSharedFeatureRenderer` | `SharedMapContainer` (always mounted) | Read-only display in Fan/Media/Ops views |
+| `useFeatureRenderer` | `TrackEditor` (mounts/unmounts) | Interactive editing in Editor view |
 
-| Change | Description |
-|--------|-------------|
-| Add explicit LineString layer | Create a separate layer specifically for LineString geometries to ensure they render |
-| Fix cleanup/creation timing | Ensure layers are created synchronously and the source exists before layers |
-| Add minimum line-width | Ensure stroke is visible even if style.strokeWidth is very small |
-| Debug logging (temporary) | Add console logs to trace the issue during development |
+### The Bug Sequence
 
-### File 2: `src/hooks/useFeatureRenderer.ts`
+1. **In Editor**: Editor renderer creates layers (`feature-*`), shared renderer hides its layers (`shared-*`)
+2. **Leave Editor**: Editor unmounts, sets `sourceAddedRef = false`, hides its layers
+3. **In Fan/Ops/Media**: Shared renderer shows its layers correctly
+4. **Return to Editor**: 
+   - `useFeatureRenderer` mounts with `sourceAddedRef = false`
+   - The data update effect runs and **early-returns** because `sourceAddedRef.current` is `false`
+   - `setupLayers` finds source already exists, sets `sourceAddedRef = true`
+   - But the data update effect **already ran** and won't re-run until features change
+   - **Result**: Editor layers are visible but empty!
 
-Fix stroke width visibility:
-
-| Change | Description |
-|--------|-------------|
-| Increase selected line width multiplier | Selected features use `strokeWidth + 2` instead of hardcoded `4` |
-| Increase minimum stroke width | Ensure a minimum visible width of `2` for lines |
-
-### File 3: `src/lib/imageAnalysis.ts`
-
-Add support for using a boundary line as a detection guide:
-
-| Change | Description |
-|--------|-------------|
-| Add `bufferLine()` function | Create a polygon buffer around a LineString geometry |
-| Add `detectWithinBoundary()` function | Limit detection to pixels within a given polygon boundary |
-| Modify `createDetectionPreview()` | Accept optional boundary line parameter |
-
-### File 4: `src/hooks/useAsphaltDetection.ts`
-
-Add option to use a selected line feature as boundary:
-
-| Change | Description |
-|--------|-------------|
-| Add `boundaryLineCoords` option | Accept line coordinates to use as detection boundary |
-| Create buffer polygon | Convert line to a buffered polygon for masking |
-| Pass boundary to detection | Filter detection to only pixels within the boundary |
-
-### File 5: `src/components/editor/DetectTrackDialog.tsx`
-
-Add UI option to use selected track line:
-
-| Change | Description |
-|--------|-------------|
-| Accept `selectedLineFeature` prop | Show if a line feature is currently selected |
-| Add "Use as boundary" checkbox | Option to constrain detection to area around the line |
-| Add buffer width slider | Control how wide the detection corridor is (e.g., 50-500m) |
-
-### File 6: `src/pages/TrackEditor.tsx`
-
-Pass selected line feature to detection dialog:
-
-| Change | Description |
-|--------|-------------|
-| Detect if selected feature is a line | Pass it to the detection dialog |
-| Update detection parameters | Include boundary when calling detection |
+The same issue affects the shared renderer's visibility toggle - it depends on `sourceAddedRef.current` being `true`.
 
 ---
 
-## Visual Changes
+## Solution
 
-### Stroke Width Fix
-- Lines will visibly change thickness when adjusting the slider
-- Selected features will show `strokeWidth + 2` instead of always being `4`
-- Minimum visible line width of `2px`
+### Fix 1: Ensure layers are visible AND data is updated on mount
 
-### Detection with Track Line
-The dialog will show:
+In both renderers, after setting `sourceAddedRef.current = true`, immediately update the source data.
 
-```text
-DETECT TRACK SURFACE
+### Fix 2: Don't rely on ref state between effect dependencies
 
-[ ] Use selected track line as boundary
+Move the data update INTO `setupLayers` to guarantee it runs after source is ready.
 
-When checked, detection will only look for asphalt
-within 100m of the traced line.
+### Fix 3: Shared renderer should NOT remove layers on cleanup
 
-Buffer Width:
-[====●=============] 100m
+Since `SharedMapContainer` never unmounts during normal navigation, the cleanup removing layers is unnecessary and could cause issues if it ever did run.
 
-[Detect]  [Cancel]
+---
+
+## Files to Modify
+
+### `src/hooks/useFeatureRenderer.ts`
+
+| Change | Description |
+|--------|-------------|
+| Update data in `setupLayers` | After ensuring layers exist and are visible, immediately set the source data |
+| Add features to effect dependency | Ensure `setupLayers` re-runs when features change (or update data separately) |
+
+### `src/hooks/useSharedFeatureRenderer.ts`
+
+| Change | Description |
+|--------|-------------|
+| Update data in `setupLayers` | After source is confirmed ready, set the data |
+| Remove layer deletion on cleanup | Just hide layers instead of removing them (like editor does) |
+| Move visibility toggle into setup | Ensure visibility is set when layers are confirmed to exist |
+
+---
+
+## Detailed Changes
+
+### `useFeatureRenderer.ts` Changes
+
+```javascript
+// In setupLayers, after setting sourceAddedRef.current = true:
+
+// Immediately update the source data since we're now ready
+const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
+if (source) {
+  const renderableFeatures = features.filter(f => 
+    f.id !== editingGeometryFeatureId && !hiddenFeatureIds.has(f.id)
+  );
+  source.setData(toGeoJSON(renderableFeatures));
+}
 ```
 
----
+Also add `features`, `editingGeometryFeatureId`, `hiddenFeatureIds` to the effect dependencies so it re-runs when features change.
 
-## Files Modified
+### `useSharedFeatureRenderer.ts` Changes
 
-| File | Changes |
-|------|---------|
-| `src/hooks/useFeatureGeometryEditor.ts` | Fix layer creation timing and LineString rendering |
-| `src/hooks/useFeatureRenderer.ts` | Fix stroke width expression to be more visible |
-| `src/lib/imageAnalysis.ts` | Add boundary-constrained detection support |
-| `src/hooks/useAsphaltDetection.ts` | Accept boundary line parameter |
-| `src/components/editor/DetectTrackDialog.tsx` | Add "use track line" option UI |
-| `src/pages/TrackEditor.tsx` | Pass selected line to detection |
+1. **Update data in setupLayers**:
+```javascript
+// After sourceAddedRef.current = true:
+const source = map.getSource(SHARED_SOURCE_ID) as mapboxgl.GeoJSONSource;
+if (source) {
+  source.setData(toGeoJSON(features));
+}
+
+// Also set visibility immediately
+const visibility = currentMode === 'editor' ? 'none' : 'visible';
+layers.forEach(layerId => {
+  if (map.getLayer(layerId)) {
+    map.setLayoutProperty(layerId, 'visibility', visibility);
+  }
+});
+```
+
+2. **Don't remove layers on cleanup** - just hide them (matching the editor renderer pattern)
 
 ---
 
 ## Result
 
 After these changes:
-1. Line features will remain visible with draggable vertices when clicking "Edit Geometry"
-2. The Stroke Width slider will have a visible effect on line thickness
-3. Users who trace a track line first can use it to guide the asphalt detection, making detection much more accurate
+1. Features will appear correctly when returning to the Track Editor
+2. Features will show/hide correctly when switching between Fan/Media/Ops views
+3. Both renderers will be synchronized with the shared map state
+4. No more timing race conditions between setup and data update effects
 
