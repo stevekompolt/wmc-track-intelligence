@@ -15,6 +15,7 @@ import {
   Undo2,
   Layers,
   ChevronDown,
+  Trash2,
   ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -66,6 +67,7 @@ interface OverlayEditorPanelProps {
   onSnapNow?: () => void;
   onReSnap?: () => void;
   onResetToFree?: () => void;
+  onDelete?: () => void;
 }
 
 export function OverlayEditorPanel({
@@ -93,6 +95,7 @@ export function OverlayEditorPanel({
   onSetAutoFitOnLoad,
   onSnapNow,
   onReSnap,
+  onDelete,
   onResetToFree,
 }: OverlayEditorPanelProps) {
   const [copied, setCopied] = useState(false);
@@ -552,6 +555,19 @@ export function OverlayEditorPanel({
             Save
           </Button>
         </div>
+
+        {/* Delete Overlay */}
+        {onDelete && (
+          <Button
+            variant="destructive"
+            size="sm"
+            className="w-full"
+            onClick={onDelete}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete Overlay
+          </Button>
+        )}
 
         {/* Validation warnings */}
         {!canSave && overlay.imageUrl === '' && (

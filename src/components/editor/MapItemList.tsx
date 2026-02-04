@@ -1,8 +1,19 @@
 // Unified list component for displaying both features and overlays
 
-import { MapPin, Spline, Hexagon, Eye, EyeOff, ImageIcon } from 'lucide-react';
+import { useState } from 'react';
+import { MapPin, Spline, Hexagon, Eye, EyeOff, ImageIcon, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import type { VenueFeature } from '@/types/feature';
 import type { MapOverlay } from '@/types/overlay';
 import { cn } from '@/lib/utils';
@@ -19,6 +30,7 @@ interface MapItemListProps {
   onSelectItem: (id: string, type: 'feature' | 'overlay') => void;
   hiddenItemIds: Set<string>;
   onToggleVisibility: (id: string, type: 'feature' | 'overlay') => void;
+  onDeleteItem?: (id: string, type: 'feature' | 'overlay') => void;
 }
 
 const EMPTY_SET = new Set<string>();
@@ -58,7 +70,10 @@ export function MapItemList({
   onSelectItem,
   hiddenItemIds = EMPTY_SET,
   onToggleVisibility,
+  onDeleteItem,
 }: MapItemListProps) {
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: 'feature' | 'overlay'; name: string } | null>(null);
+
   if (items.length === 0) {
     return (
       <div className="p-3 text-xs text-muted-foreground font-mono">
@@ -67,56 +82,100 @@ export function MapItemList({
     );
   }
 
+  const handleDeleteClick = (e: React.MouseEvent, item: MapItem) => {
+    e.stopPropagation();
+    setDeleteConfirm({ id: item.data.id, type: item.type, name: item.data.name });
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteConfirm && onDeleteItem) {
+      onDeleteItem(deleteConfirm.id, deleteConfirm.type);
+    }
+    setDeleteConfirm(null);
+  };
+
   return (
-    <ScrollArea className="h-[200px]">
-      <div className="p-1">
-        {items.map((item) => {
-          const isHidden = hiddenItemIds.has(item.data.id);
-          const isSelected = selectedItemId === item.data.id && selectedItemType === item.type;
-          const status = getItemStatus(item);
-          
-          return (
-            <div
-              key={`${item.type}-${item.data.id}`}
-              className={cn(
-                "w-full flex items-center gap-2 px-2 py-1.5 rounded transition-colors",
-                isSelected
-                  ? "bg-primary/10 border border-primary/30"
-                  : "hover:bg-muted/50 border border-transparent",
-                isHidden && "opacity-50"
-              )}
-            >
-              <button
-                onClick={() => onSelectItem(item.data.id, item.type)}
-                className="flex-1 flex items-center gap-2 text-left min-w-0"
-              >
-                <ItemIcon item={item} />
-                <span className="flex-1 text-xs truncate">{getItemName(item)}</span>
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleVisibility(item.data.id, item.type);
-                }}
-                className="p-1 hover:bg-muted rounded transition-colors"
-                title={isHidden ? "Show on map" : "Hide on map"}
-              >
-                {isHidden ? (
-                  <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-                ) : (
-                  <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+    <>
+      <ScrollArea className="h-[200px]">
+        <div className="p-1">
+          {items.map((item) => {
+            const isHidden = hiddenItemIds.has(item.data.id);
+            const isSelected = selectedItemId === item.data.id && selectedItemType === item.type;
+            const status = getItemStatus(item);
+            
+            return (
+              <div
+                key={`${item.type}-${item.data.id}`}
+                className={cn(
+                  "w-full flex items-center gap-2 px-2 py-1.5 rounded transition-colors",
+                  isSelected
+                    ? "bg-primary/10 border border-primary/30"
+                    : "hover:bg-muted/50 border border-transparent",
+                  isHidden && "opacity-50"
                 )}
-              </button>
-              <Badge
-                variant={status === 'published' ? 'default' : 'secondary'}
-                className="text-[10px] px-1.5 py-0"
               >
-                {status === 'published' ? 'pub' : status === 'archived' ? 'arc' : 'draft'}
-              </Badge>
-            </div>
-          );
-        })}
-      </div>
-    </ScrollArea>
+                <button
+                  onClick={() => onSelectItem(item.data.id, item.type)}
+                  className="flex-1 flex items-center gap-2 text-left min-w-0"
+                >
+                  <ItemIcon item={item} />
+                  <span className="flex-1 text-xs truncate">{getItemName(item)}</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleVisibility(item.data.id, item.type);
+                  }}
+                  className="p-1 hover:bg-muted rounded transition-colors"
+                  title={isHidden ? "Show on map" : "Hide on map"}
+                >
+                  {isHidden ? (
+                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </button>
+                {onDeleteItem && (
+                  <button
+                    onClick={(e) => handleDeleteClick(e, item)}
+                    className="p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors"
+                    title="Delete layer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                  </button>
+                )}
+                <Badge
+                  variant={status === 'published' ? 'default' : 'secondary'}
+                  className="text-[10px] px-1.5 py-0"
+                >
+                  {status === 'published' ? 'pub' : status === 'archived' ? 'arc' : 'draft'}
+                </Badge>
+              </div>
+            );
+          })}
+        </div>
+      </ScrollArea>
+
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Layer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{deleteConfirm?.name}" from the map.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
