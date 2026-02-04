@@ -1,56 +1,68 @@
 
-# Maintain Polygon/Line Appearance During Geometry Editing
+# Collapsible Features List with Selected Feature Preview
 
-## Problem
+## Overview
 
-When editing a polygon or line geometry (dragging vertices), the feature's stroke and fill disappear because the feature is hidden from the main renderer to avoid conflicts with the vertex markers. Currently, only the blue vertex dots are visible during editing.
-
-## Solution
-
-Add a dedicated "editing preview" layer in the `useFeatureGeometryEditor` hook that renders the feature being edited with its actual style properties (color, stroke opacity, fill opacity, stroke width). This layer will update in real-time as vertices are dragged.
+Make the FEATURES section collapsible like the FEATURE TOOLBOX. When collapsed, it will show only the currently selected feature (if any) as a quick preview, while hiding the rest of the list.
 
 ---
 
 ## Technical Changes
 
-### File: `src/hooks/useFeatureGeometryEditor.ts`
+### File: `src/pages/TrackEditor.tsx`
 
-**Add a new Mapbox source and layers** to render the editing feature with its proper styling:
+Wrap the Features header and list in a `Collapsible` component with smart preview behavior:
 
 | Change | Description |
 |--------|-------------|
-| Add source/layer constants | Define IDs for the editing preview source and layers |
-| Add source setup | Create a GeoJSON source for the feature being edited |
-| Add polygon fill layer | Render fill with feature's `fillColor` and `fillOpacity` |
-| Add stroke layer | Render stroke with feature's `color`, `opacity`, and `strokeWidth` |
-| Update data on geometry change | Keep the editing layer in sync as vertices are dragged |
-| Cleanup on unmount | Remove source and layers when editing ends |
+| Add Collapsible wrapper | Wrap the FEATURES header and FeatureList in `Collapsible` |
+| Add CollapsibleTrigger | Make the header clickable with a ChevronDown icon |
+| Show selected feature when collapsed | Display the currently selected feature name/icon in the header when collapsed |
+| Wrap FeatureList in CollapsibleContent | Hide the full list when collapsed |
 
-**Implementation approach:**
+### Implementation Details
 
-1. When editing starts (`isEditing` becomes true):
-   - Add a new GeoJSON source with the feature's current geometry
-   - Add fill layer (for polygons) with the feature's `fillColor` and `fillOpacity`
-   - Add stroke layer with the feature's `color`, `opacity`, and `strokeWidth`
+**Header behavior:**
+- When expanded: Shows "FEATURES (count)" with collapse arrow
+- When collapsed: Shows "FEATURES (count)" plus the selected feature name and icon (if any) as a preview chip
 
-2. During dragging:
-   - Update the source data with the new geometry in real-time (this already happens via `onGeometryUpdate`, but we'll also update the editing source directly)
+**Selected feature preview (when collapsed):**
+```
+FEATURES (5) • [icon] Finish Line     [▶]
+```
 
-3. When editing ends:
-   - Remove the editing source and layers
+This gives users quick context about which feature is selected without needing to expand the list.
+
+---
+
+## Code Structure
+
+```text
+<Collapsible defaultOpen>
+  <CollapsibleTrigger>
+    FEATURES (count)
+    {collapsed && selectedFeature && (
+      <preview chip showing selected feature>
+    )}
+    <ChevronDown />
+  </CollapsibleTrigger>
+  <CollapsibleContent>
+    <FeatureList ... />
+  </CollapsibleContent>
+</Collapsible>
+```
 
 ---
 
 ## Visual Result
 
-**Before (current behavior):**
-- Polygon disappears during geometry editing
-- Only blue vertex markers visible
+**Expanded state:**
+- Header with count and collapse arrow
+- Full scrollable feature list below
 
-**After:**
-- Polygon fill and stroke remain visible with configured colors and opacity
-- Vertex markers overlay on top for dragging
-- Real-time updates as vertices move
+**Collapsed state:**
+- Header shows count + selected feature name/icon as inline preview
+- List hidden to save space for Feature Inspector
 
 ---
 
@@ -58,5 +70,4 @@ Add a dedicated "editing preview" layer in the `useFeatureGeometryEditor` hook t
 
 | File | Changes |
 |------|---------|
-| `src/hooks/useFeatureGeometryEditor.ts` | Add editing preview source/layers with feature styling |
-
+| `src/pages/TrackEditor.tsx` | Wrap Features section in Collapsible with selected feature preview |
