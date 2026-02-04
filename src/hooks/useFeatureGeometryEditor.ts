@@ -21,6 +21,11 @@ interface VertexMarker {
 const VERTEX_COLOR = '#3B82F6';
 const MIDPOINT_COLOR = 'rgba(59, 130, 246, 0.5)';
 
+// Editing preview layer IDs
+const EDITING_SOURCE_ID = 'geometry-editing-preview';
+const EDITING_FILL_LAYER = 'geometry-editing-fill';
+const EDITING_STROKE_LAYER = 'geometry-editing-stroke';
+
 // Create a vertex marker element
 function createVertexElement(type: 'vertex' | 'midpoint'): HTMLDivElement {
   const el = document.createElement('div');
@@ -43,6 +48,7 @@ export function useFeatureGeometryEditor({
   const markersRef = useRef<VertexMarker[]>([]);
   const isDraggingRef = useRef(false);
   const onGeometryUpdateRef = useRef(onGeometryUpdate);
+  const editingLayersAddedRef = useRef(false);
   
   // Keep callback ref updated
   onGeometryUpdateRef.current = onGeometryUpdate;
@@ -80,6 +86,97 @@ export function useFeatureGeometryEditor({
     return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   };
 
+  // Convert feature to GeoJSON for preview layer
+  const featureToGeoJSON = useCallback((feat: VenueFeature): GeoJSON.FeatureCollection => {
+    return {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {},
+        geometry: feat.geometry as GeoJSON.Geometry,
+      }],
+    };
+  }, []);
+
+  // Add editing preview layers
+  const addEditingLayers = useCallback(() => {
+    if (!map || !feature || editingLayersAddedRef.current) return;
+
+    // Add source
+    if (!map.getSource(EDITING_SOURCE_ID)) {
+      map.addSource(EDITING_SOURCE_ID, {
+        type: 'geojson',
+        data: featureToGeoJSON(feature),
+      });
+    }
+
+    // Add fill layer for polygons
+    if (!map.getLayer(EDITING_FILL_LAYER)) {
+      map.addLayer({
+        id: EDITING_FILL_LAYER,
+        type: 'fill',
+        source: EDITING_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: {
+          'fill-color': feature.style.fillColor,
+          'fill-opacity': feature.style.fillOpacity,
+        },
+      });
+    }
+
+    // Add stroke layer for lines and polygons
+    if (!map.getLayer(EDITING_STROKE_LAYER)) {
+      map.addLayer({
+        id: EDITING_STROKE_LAYER,
+        type: 'line',
+        source: EDITING_SOURCE_ID,
+        filter: ['any',
+          ['==', ['geometry-type'], 'Polygon'],
+          ['==', ['geometry-type'], 'LineString']
+        ],
+        paint: {
+          'line-color': feature.style.color,
+          'line-width': feature.style.strokeWidth,
+          'line-opacity': feature.style.opacity,
+        },
+      });
+    }
+
+    editingLayersAddedRef.current = true;
+  }, [map, feature, featureToGeoJSON]);
+
+  // Remove editing preview layers
+  const removeEditingLayers = useCallback(() => {
+    if (!map) return;
+
+    try {
+      if (map.getLayer(EDITING_STROKE_LAYER)) map.removeLayer(EDITING_STROKE_LAYER);
+      if (map.getLayer(EDITING_FILL_LAYER)) map.removeLayer(EDITING_FILL_LAYER);
+      if (map.getSource(EDITING_SOURCE_ID)) map.removeSource(EDITING_SOURCE_ID);
+    } catch (e) {
+      // Ignore cleanup errors
+    }
+    
+    editingLayersAddedRef.current = false;
+  }, [map]);
+
+  // Update editing preview source data
+  const updateEditingSource = useCallback((geometry: FeatureGeometry) => {
+    if (!map || !editingLayersAddedRef.current) return;
+
+    const source = map.getSource(EDITING_SOURCE_ID) as mapboxgl.GeoJSONSource;
+    if (source) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {},
+          geometry: geometry as GeoJSON.Geometry,
+        }],
+      });
+    }
+  }, [map]);
+
   // Clear all markers
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach(({ marker }) => marker.remove());
@@ -113,6 +210,9 @@ export function useFeatureGeometryEditor({
         // Update geometry in real-time
         const newGeometry = buildGeometry(feature.type, updatedCoords);
         onGeometryUpdateRef.current(newGeometry);
+        
+        // Also update the editing preview layer
+        updateEditingSource(newGeometry);
       });
 
       marker.on('dragend', () => {
@@ -148,6 +248,17 @@ export function useFeatureGeometryEditor({
           el.style.cursor = 'move';
         });
 
+        marker.on('drag', () => {
+          const lngLat = marker.getLngLat();
+          
+          // Insert new vertex after index i (preview during drag)
+          const updatedCoords = [...coords];
+          updatedCoords.splice(i + 1, 0, [lngLat.lng, lngLat.lat]);
+          
+          const newGeometry = buildGeometry(feature.type, updatedCoords);
+          updateEditingSource(newGeometry);
+        });
+
         marker.on('dragend', () => {
           isDraggingRef.current = false;
           const lngLat = marker.getLngLat();
@@ -165,21 +276,34 @@ export function useFeatureGeometryEditor({
     }
 
     markersRef.current = newMarkers;
-  }, [map, feature, getCoordinates, buildGeometry, clearMarkers]);
+  }, [map, feature, getCoordinates, buildGeometry, updateEditingSource]);
 
-  // Create/remove markers when editing state changes
+  // Create/remove markers and editing layers when editing state changes
   useEffect(() => {
     if (isEditing && map && feature) {
       clearMarkers();
-      createMarkers();
+      removeEditingLayers();
+      
+      // Add editing preview layers first, then markers on top
+      if (map.isStyleLoaded()) {
+        addEditingLayers();
+        createMarkers();
+      } else {
+        map.once('style.load', () => {
+          addEditingLayers();
+          createMarkers();
+        });
+      }
     } else {
       clearMarkers();
+      removeEditingLayers();
     }
 
     return () => {
       clearMarkers();
+      removeEditingLayers();
     };
-  }, [isEditing, map, feature?.id, clearMarkers, createMarkers]);
+  }, [isEditing, map, feature?.id, clearMarkers, createMarkers, addEditingLayers, removeEditingLayers]);
 
   // Update marker positions when geometry changes (but not during drag)
   useEffect(() => {
@@ -194,6 +318,9 @@ export function useFeatureGeometryEditor({
       }
     });
     
+    // Also update the editing source
+    updateEditingSource(feature.geometry);
+    
     // Midpoints need full recreation when coords change, handled by feature?.id dep
-  }, [feature?.geometry, isEditing, getCoordinates]);
+  }, [feature?.geometry, isEditing, getCoordinates, updateEditingSource]);
 }
