@@ -7,7 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog';
 import { OverlayEditorPanel } from '@/components/editor/OverlayEditorPanel';
 import { FeatureInspector } from '@/components/editor/FeatureInspector';
-import { FeatureList } from '@/components/editor/FeatureList';
+import { CollapsibleFeatureList } from '@/components/editor/CollapsibleFeatureList';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
 import { useOverlayEditor } from '@/hooks/useOverlayEditor';
@@ -329,15 +329,10 @@ export default function TrackEditor() {
               </CollapsibleContent>
             </Collapsible>
             
-            {/* Feature List */}
-            <div className="p-3 border-b border-border">
-              <h2 className="font-display text-sm font-semibold tracking-wider">
-                FEATURES ({featureEditor.features.length})
-              </h2>
-            </div>
-            <FeatureList
+            {/* Feature List - Collapsible */}
+            <CollapsibleFeatureList
               features={featureEditor.features}
-              selectedFeatureId={featureEditor.selectedFeature?.id || null}
+              selectedFeature={featureEditor.selectedFeature}
               onSelectFeature={handleSelectFeature}
             />
             
