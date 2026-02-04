@@ -14,6 +14,7 @@ import { useMapOverlayRenderer } from '@/hooks/useMapOverlayRenderer';
 import { useFeatureEditor } from '@/hooks/useFeatureEditor';
 import { useFeatureDrawing } from '@/hooks/useFeatureDrawing';
 import { useFeatureRenderer } from '@/hooks/useFeatureRenderer';
+import { useFeatureGeometryEditor } from '@/hooks/useFeatureGeometryEditor';
 import type { CornerHandle, VenueCoords } from '@/types/overlay';
 import type { FeatureType, FeatureGeometry } from '@/types/feature';
 import { DEFAULT_FEATURE_STYLE } from '@/types/feature';
@@ -46,6 +47,7 @@ export default function TrackEditor() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<EditorMode>('features');
   const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
+  const [editingGeometryFeatureId, setEditingGeometryFeatureId] = useState<string | null>(null);
 
   // Memoize venue coordinates to prevent unnecessary re-renders
   const venueCoords: VenueCoords | null = useMemo(() => {
@@ -142,15 +144,41 @@ export default function TrackEditor() {
     partialCoords: featureDrawing.partialCoords,
     drawingMode: featureDrawing.mode,
     selectedFeatureId: featureEditor.selectedFeature?.id || null,
+    editingGeometryFeatureId,
     onFeatureClick: featureEditor.selectFeature,
+  });
+
+  // Geometry editing for selected feature
+  const editingFeature = editingGeometryFeatureId 
+    ? featureEditor.features.find(f => f.id === editingGeometryFeatureId) || null
+    : null;
+
+  useFeatureGeometryEditor({
+    map: mapInstance,
+    feature: editingFeature,
+    isEditing: !!editingGeometryFeatureId,
+    onGeometryUpdate: (geometry) => {
+      if (editingGeometryFeatureId) {
+        featureEditor.updateGeometry(editingGeometryFeatureId, geometry);
+      }
+    },
   });
 
   // Handle drawing tool click
   const handleStartDrawing = useCallback((type: FeatureType) => {
-    // Deselect any selected feature when starting to draw
+    // Exit geometry editing and deselect feature when starting to draw
+    setEditingGeometryFeatureId(null);
     featureEditor.selectFeature(null);
     featureDrawing.startDrawing(type);
   }, [featureEditor, featureDrawing]);
+
+  // Stop geometry editing when selecting a different feature or deselecting
+  const handleSelectFeature = useCallback((featureId: string | null) => {
+    if (featureId !== editingGeometryFeatureId) {
+      setEditingGeometryFeatureId(null);
+    }
+    featureEditor.selectFeature(featureId);
+  }, [featureEditor, editingGeometryFeatureId]);
 
   // Get current drawing instruction
   const drawingInstruction = featureDrawing.mode !== 'none' ? DRAWING_INSTRUCTIONS[featureDrawing.mode] : null;
@@ -304,7 +332,7 @@ export default function TrackEditor() {
             <FeatureList
               features={featureEditor.features}
               selectedFeatureId={featureEditor.selectedFeature?.id || null}
-              onSelectFeature={featureEditor.selectFeature}
+              onSelectFeature={handleSelectFeature}
             />
             
             {/* Feature Inspector */}
@@ -316,6 +344,7 @@ export default function TrackEditor() {
             <div className="flex-1 overflow-auto">
               <FeatureInspector
                 feature={featureEditor.selectedFeature}
+                isEditingGeometry={editingGeometryFeatureId === featureEditor.selectedFeature?.id}
                 onUpdateName={(name) => {
                   if (featureEditor.selectedFeature) {
                     featureEditor.updateName(featureEditor.selectedFeature.id, name);
@@ -341,8 +370,17 @@ export default function TrackEditor() {
                     featureEditor.updateStatus(featureEditor.selectedFeature.id, status);
                   }
                 }}
+                onStartEditingGeometry={() => {
+                  if (featureEditor.selectedFeature) {
+                    setEditingGeometryFeatureId(featureEditor.selectedFeature.id);
+                  }
+                }}
+                onStopEditingGeometry={() => {
+                  setEditingGeometryFeatureId(null);
+                }}
                 onDelete={() => {
                   if (featureEditor.selectedFeature) {
+                    setEditingGeometryFeatureId(null);
                     featureEditor.deleteFeature(featureEditor.selectedFeature.id);
                   }
                 }}

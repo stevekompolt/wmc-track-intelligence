@@ -30,6 +30,7 @@ interface UseFeatureEditorResult {
   updateStyle: (featureId: string, style: Partial<FeatureStyle>) => Promise<void>;
   updateVisibility: (featureId: string, visibility: { fans?: boolean; media?: boolean; ops?: boolean }) => Promise<void>;
   updateStatus: (featureId: string, status: FeatureStatus) => Promise<void>;
+  updateGeometry: (featureId: string, geometry: FeatureGeometry) => Promise<void>;
   
   // Refresh
   refreshFeatures: () => Promise<void>;
@@ -160,6 +161,10 @@ export function useFeatureEditor({ venueId, onFeatureCreated }: UseFeatureEditor
     await updateFeature(featureId, { status });
   }, [updateFeature]);
 
+  const updateGeometry = useCallback(async (featureId: string, geometry: FeatureGeometry) => {
+    await updateFeature(featureId, { geometry });
+  }, [updateFeature]);
+
   const refreshFeatures = useCallback(async () => {
     await loadFeatures();
   }, [loadFeatures]);
@@ -178,6 +183,7 @@ export function useFeatureEditor({ venueId, onFeatureCreated }: UseFeatureEditor
     updateStyle,
     updateVisibility,
     updateStatus,
+    updateGeometry,
     refreshFeatures,
   };
 }
