@@ -1,125 +1,142 @@
 
-# Display Features Across All Views with Mode-Aware Visibility
 
-## Problem
+# Fix Line Feature Editing, Stroke Width, and Improve Track Detection
 
-Features created in the Track Editor are not showing in Fan, Media, or Ops views because:
+## Issues Identified
 
-1. **Rendering is Editor-Only**: The `useFeatureRenderer` hook is only called in `TrackEditor.tsx`
-2. **Cleanup on Unmount**: When navigating away from `/editor`, the TrackEditor component unmounts and removes all feature layers from the map
-3. **No Shared Feature State**: Other views don't load or render features at all
-4. **Visibility Flags Unused**: Each feature has `visibleToFans`, `visibleToMedia`, `visibleToOps` flags, but these are only editable - they're never used to filter what's shown in each view
+Based on my investigation, there are three distinct issues to address:
 
----
+### Issue 1: Line disappears when clicking "Edit Geometry"
 
-## Solution Architecture
+**Root Cause:** A race condition in `useFeatureGeometryEditor.ts`. The effect sequence is:
+1. `removeEditingLayers()` is called immediately, setting `editingLayersAddedRef.current = false`
+2. Then `createLayersAndMarkers()` is called which tries to add source and layers
+3. However, the `removeEditingLayers()` cleanup tries to remove layers that may not exist yet, and the subsequent source/layer creation has timing issues with the effect dependencies
 
-Move feature loading and rendering to the shared map layer, with mode-aware visibility filtering.
+The main problem is that `feature` is in the dependency array, causing the entire cleanup and recreation cycle to run when the feature reference changes (even if the ID is the same). This combined with the `clearMarkers()` and `removeEditingLayers()` at the start means the layers get removed but may not be properly recreated.
 
-```text
-SharedMapContainer
-    │
-    ├── TrackMap (already shared)
-    │
-    └── SharedFeatureRenderer (NEW)
-            │
-            ├── Loads features for current track
-            ├── Filters by current mode's visibility
-            └── Renders read-only layers on map
-```
+### Issue 2: Stroke Width slider has no visible effect
 
-Each view can optionally add editing capabilities on top (TrackEditor adds drawing, selection, geometry editing).
+**Root Cause:** In `useFeatureRenderer.ts`, the stroke width works correctly, but the rendering uses expression-based paint properties that read `strokeWidth` from the feature properties. The property IS being passed correctly, but when testing, users often have the feature selected - and selected features are hardcoded to width `4`.
+
+Additionally, the layer needs to be updated when feature properties change. The current code only updates the source data, but Mapbox paint properties that use data-driven expressions should be working. Let me verify the property is being passed in the GeoJSON conversion - yes it is on line 53.
+
+The actual issue may be that the slider range is 1-8px which is very subtle, especially on satellite imagery. Also need to verify the property update is propagating.
+
+### Issue 3: Detect Track feature doesn't use the traced track line
+
+**Current Behavior:** The "Detect Track" feature does a whole-canvas pixel analysis looking for dark asphalt. It has no concept of using an existing line as a guide or boundary.
+
+**User Expectation:** If a user has already traced the track centerline with a Line feature, the detection should use that line as a guide - either to constrain the detection area or to create a buffer/corridor around the line.
 
 ---
 
 ## Technical Changes
 
-### File 1: Create `src/contexts/FeatureContext.tsx`
+### File 1: `src/hooks/useFeatureGeometryEditor.ts`
 
-A new context to share feature state across all views:
-
-| Export | Description |
-|--------|-------------|
-| `FeatureProvider` | Wraps the app and provides feature state |
-| `useFeatureContext` | Hook to access features in any component |
-| Features loaded by venue | Uses `selectedTrack.id` to load features |
-| Mode-aware filtering | Exposes `visibleFeatures` filtered by current mode |
-
-### File 2: Create `src/hooks/useSharedFeatureRenderer.ts`
-
-A read-only version of the feature renderer for non-editor views:
-
-| Feature | Description |
-|---------|-------------|
-| Mode-aware filtering | Only shows features where the mode's visibility flag is true |
-| No editing support | No click handlers, no drawing preview, no geometry editing |
-| Shared across views | Runs in SharedMapContainer, persists across navigation |
-
-### File 3: Update `src/components/layout/SharedMapContainer.tsx`
-
-Integrate the shared feature rendering:
+Fix the layer creation to ensure LineString features are properly displayed during editing:
 
 | Change | Description |
 |--------|-------------|
-| Get map instance | Add state to capture map ref when loaded |
-| Use FeatureContext | Get features from the shared context |
-| Use useSharedFeatureRenderer | Render features with mode filtering |
+| Add explicit LineString layer | Create a separate layer specifically for LineString geometries to ensure they render |
+| Fix cleanup/creation timing | Ensure layers are created synchronously and the source exists before layers |
+| Add minimum line-width | Ensure stroke is visible even if style.strokeWidth is very small |
+| Debug logging (temporary) | Add console logs to trace the issue during development |
 
-### File 4: Update `src/pages/TrackEditor.tsx`
+### File 2: `src/hooks/useFeatureRenderer.ts`
 
-Modify to work with the shared feature context:
-
-| Change | Description |
-|--------|-------------|
-| Use FeatureContext | Get features from context instead of local hook |
-| Keep editor-only rendering | Still use `useFeatureRenderer` for editing overlays (selection highlight, drawing preview) |
-| Handle layer conflicts | Disable shared renderer when editor-specific layers are active |
-
-### File 5: Update `src/components/layout/AppLayout.tsx`
-
-Wrap the app with FeatureProvider:
+Fix stroke width visibility:
 
 | Change | Description |
 |--------|-------------|
-| Add FeatureProvider | Wrap content so features are available everywhere |
+| Increase selected line width multiplier | Selected features use `strokeWidth + 2` instead of hardcoded `4` |
+| Increase minimum stroke width | Ensure a minimum visible width of `2` for lines |
+
+### File 3: `src/lib/imageAnalysis.ts`
+
+Add support for using a boundary line as a detection guide:
+
+| Change | Description |
+|--------|-------------|
+| Add `bufferLine()` function | Create a polygon buffer around a LineString geometry |
+| Add `detectWithinBoundary()` function | Limit detection to pixels within a given polygon boundary |
+| Modify `createDetectionPreview()` | Accept optional boundary line parameter |
+
+### File 4: `src/hooks/useAsphaltDetection.ts`
+
+Add option to use a selected line feature as boundary:
+
+| Change | Description |
+|--------|-------------|
+| Add `boundaryLineCoords` option | Accept line coordinates to use as detection boundary |
+| Create buffer polygon | Convert line to a buffered polygon for masking |
+| Pass boundary to detection | Filter detection to only pixels within the boundary |
+
+### File 5: `src/components/editor/DetectTrackDialog.tsx`
+
+Add UI option to use selected track line:
+
+| Change | Description |
+|--------|-------------|
+| Accept `selectedLineFeature` prop | Show if a line feature is currently selected |
+| Add "Use as boundary" checkbox | Option to constrain detection to area around the line |
+| Add buffer width slider | Control how wide the detection corridor is (e.g., 50-500m) |
+
+### File 6: `src/pages/TrackEditor.tsx`
+
+Pass selected line feature to detection dialog:
+
+| Change | Description |
+|--------|-------------|
+| Detect if selected feature is a line | Pass it to the detection dialog |
+| Update detection parameters | Include boundary when calling detection |
 
 ---
 
-## Mode-Aware Visibility Logic
+## Visual Changes
 
-When filtering features for display:
+### Stroke Width Fix
+- Lines will visibly change thickness when adjusting the slider
+- Selected features will show `strokeWidth + 2` instead of always being `4`
+- Minimum visible line width of `2px`
 
-| Mode | Filter Logic |
-|------|-------------|
-| `editor` | Show all features (editor sees everything) |
-| `fan` | Show features where `visibleToFans === true` |
-| `media` | Show features where `visibleToMedia === true` |
-| `ops` | Show features where `visibleToOps === true` |
+### Detection with Track Line
+The dialog will show:
+
+```text
+DETECT TRACK SURFACE
+
+[ ] Use selected track line as boundary
+
+When checked, detection will only look for asphalt
+within 100m of the traced line.
+
+Buffer Width:
+[====●=============] 100m
+
+[Detect]  [Cancel]
+```
 
 ---
 
-## Files to Create
-
-| File | Purpose |
-|------|---------|
-| `src/contexts/FeatureContext.tsx` | Shared feature state and loading |
-| `src/hooks/useSharedFeatureRenderer.ts` | Read-only feature rendering for non-editor views |
-
-## Files to Modify
+## Files Modified
 
 | File | Changes |
 |------|---------|
-| `src/components/layout/SharedMapContainer.tsx` | Add shared feature rendering |
-| `src/components/layout/AppLayout.tsx` | Add FeatureProvider wrapper |
-| `src/pages/TrackEditor.tsx` | Use shared context, handle layer coordination |
+| `src/hooks/useFeatureGeometryEditor.ts` | Fix layer creation timing and LineString rendering |
+| `src/hooks/useFeatureRenderer.ts` | Fix stroke width expression to be more visible |
+| `src/lib/imageAnalysis.ts` | Add boundary-constrained detection support |
+| `src/hooks/useAsphaltDetection.ts` | Accept boundary line parameter |
+| `src/components/editor/DetectTrackDialog.tsx` | Add "use track line" option UI |
+| `src/pages/TrackEditor.tsx` | Pass selected line to detection |
 
 ---
 
 ## Result
 
-After this change:
+After these changes:
+1. Line features will remain visible with draggable vertices when clicking "Edit Geometry"
+2. The Stroke Width slider will have a visible effect on line thickness
+3. Users who trace a track line first can use it to guide the asphalt detection, making detection much more accurate
 
-1. Features created in Track Editor will appear in all other views
-2. Visibility toggles (Fans/Media/Ops) in the Feature Inspector will control which views show each feature
-3. Only published features should optionally be shown (if desired), or all features shown in editor mode
-4. The editor retains full editing capabilities (drawing, selection, geometry editing)
