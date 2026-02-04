@@ -1,120 +1,137 @@
 
-
-# Fix Feature Visibility When Switching Between Modes
+# Fix Feature Visibility Toggle Bug and Add Inspector Toggle
 
 ## Problem Summary
 
-Features disappear when navigating back to the Track Editor from other views (Fan, Media, Ops). The issue is a **timing and state synchronization problem** between two feature renderers that share the same map but manage layers independently.
+Two issues need to be fixed:
+
+1. **Bug**: When clicking the eye icon to toggle feature visibility, the entire setup effect re-runs because `hiddenFeatureIds` is in its dependency array. This causes layers to be hidden and re-shown, creating flickering and sometimes leaving features invisible.
+
+2. **Missing Feature**: The Feature Inspector lacks a show/hide toggle button that the Feature List has.
 
 ---
 
 ## Root Cause Analysis
 
-There are two feature renderers in the system:
+### Visibility Toggle Bug
 
-| Renderer | Location | Purpose |
-|----------|----------|---------|
-| `useSharedFeatureRenderer` | `SharedMapContainer` (always mounted) | Read-only display in Fan/Media/Ops views |
-| `useFeatureRenderer` | `TrackEditor` (mounts/unmounts) | Interactive editing in Editor view |
+In `useFeatureRenderer.ts`, the main initialization effect (lines 132-315) includes `hiddenFeatureIds` in its dependencies:
 
-### The Bug Sequence
+```javascript
+}, [map, features, editingGeometryFeatureId, hiddenFeatureIds, toGeoJSON]);
+```
 
-1. **In Editor**: Editor renderer creates layers (`feature-*`), shared renderer hides its layers (`shared-*`)
-2. **Leave Editor**: Editor unmounts, sets `sourceAddedRef = false`, hides its layers
-3. **In Fan/Ops/Media**: Shared renderer shows its layers correctly
-4. **Return to Editor**: 
-   - `useFeatureRenderer` mounts with `sourceAddedRef = false`
-   - The data update effect runs and **early-returns** because `sourceAddedRef.current` is `false`
-   - `setupLayers` finds source already exists, sets `sourceAddedRef = true`
-   - But the data update effect **already ran** and won't re-run until features change
-   - **Result**: Editor layers are visible but empty!
+When a user clicks the eye icon:
+1. `hiddenFeatureIds` Set changes
+2. The main effect runs its cleanup (hides all layers with `visibility: 'none'`)
+3. Then re-runs setup (which shows layers again)
+4. This causes flickering and potential race conditions
 
-The same issue affects the shared renderer's visibility toggle - it depends on `sourceAddedRef.current` being `true`.
+**The Fix**: Remove `hiddenFeatureIds` from the initialization effect dependencies. The separate data-update effect (lines 318-330) already handles filtering hidden features from the source data, which is the correct way to hide features.
 
 ---
 
-## Solution
+## Technical Changes
 
-### Fix 1: Ensure layers are visible AND data is updated on mount
-
-In both renderers, after setting `sourceAddedRef.current = true`, immediately update the source data.
-
-### Fix 2: Don't rely on ref state between effect dependencies
-
-Move the data update INTO `setupLayers` to guarantee it runs after source is ready.
-
-### Fix 3: Shared renderer should NOT remove layers on cleanup
-
-Since `SharedMapContainer` never unmounts during normal navigation, the cleanup removing layers is unnecessary and could cause issues if it ever did run.
-
----
-
-## Files to Modify
-
-### `src/hooks/useFeatureRenderer.ts`
+### File 1: `src/hooks/useFeatureRenderer.ts`
 
 | Change | Description |
 |--------|-------------|
-| Update data in `setupLayers` | After ensuring layers exist and are visible, immediately set the source data |
-| Add features to effect dependency | Ensure `setupLayers` re-runs when features change (or update data separately) |
+| Remove `hiddenFeatureIds` from setup effect deps | The data-update effect already handles this correctly |
+| Remove `editingGeometryFeatureId` from setup effect deps | Same reason - data effect handles it |
+| Keep data-update effect unchanged | It properly filters and updates source data |
 
-### `src/hooks/useSharedFeatureRenderer.ts`
+The initialization effect should only depend on:
+- `map` - when map instance changes
+- `toGeoJSON` - stable callback
+
+The `features` dependency is needed to populate initial data, but we can handle this more carefully.
+
+### File 2: `src/components/editor/FeatureInspector.tsx`
 
 | Change | Description |
 |--------|-------------|
-| Update data in `setupLayers` | After source is confirmed ready, set the data |
-| Remove layer deletion on cleanup | Just hide layers instead of removing them (like editor does) |
-| Move visibility toggle into setup | Ensure visibility is set when layers are confirmed to exist |
+| Add `isHidden` prop | Boolean indicating if current feature is hidden |
+| Add `onToggleHidden` prop | Callback to toggle the feature's visibility |
+| Add visibility toggle button | Eye icon button next to the feature name |
 
 ---
 
-## Detailed Changes
+## Implementation Details
 
 ### `useFeatureRenderer.ts` Changes
 
-```javascript
-// In setupLayers, after setting sourceAddedRef.current = true:
+Remove unnecessary dependencies from the setup effect:
 
-// Immediately update the source data since we're now ready
-const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
-if (source) {
-  const renderableFeatures = features.filter(f => 
-    f.id !== editingGeometryFeatureId && !hiddenFeatureIds.has(f.id)
-  );
-  source.setData(toGeoJSON(renderableFeatures));
+```javascript
+// OLD - causes re-init on every visibility toggle
+}, [map, features, editingGeometryFeatureId, hiddenFeatureIds, toGeoJSON]);
+
+// NEW - only re-init when map or core structure changes
+}, [map, toGeoJSON]);
+```
+
+Also update the data synchronization in `setupLayers` to use refs for `features`, `editingGeometryFeatureId`, and `hiddenFeatureIds` so they're always current without triggering effect re-runs.
+
+### `FeatureInspector.tsx` Changes
+
+Add new props and UI:
+
+```typescript
+interface FeatureInspectorProps {
+  // ... existing props
+  isHidden?: boolean;
+  onToggleHidden?: () => void;
 }
 ```
 
-Also add `features`, `editingGeometryFeatureId`, `hiddenFeatureIds` to the effect dependencies so it re-runs when features change.
+Add toggle button in the header area near the feature name:
 
-### `useSharedFeatureRenderer.ts` Changes
-
-1. **Update data in setupLayers**:
-```javascript
-// After sourceAddedRef.current = true:
-const source = map.getSource(SHARED_SOURCE_ID) as mapboxgl.GeoJSONSource;
-if (source) {
-  source.setData(toGeoJSON(features));
-}
-
-// Also set visibility immediately
-const visibility = currentMode === 'editor' ? 'none' : 'visible';
-layers.forEach(layerId => {
-  if (map.getLayer(layerId)) {
-    map.setLayoutProperty(layerId, 'visibility', visibility);
-  }
-});
+```jsx
+{onToggleHidden && (
+  <Button
+    variant="ghost"
+    size="icon"
+    onClick={onToggleHidden}
+    title={isHidden ? "Show on map" : "Hide on map"}
+  >
+    {isHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+  </Button>
+)}
 ```
 
-2. **Don't remove layers on cleanup** - just hide them (matching the editor renderer pattern)
+### `TrackEditor.tsx` Changes
+
+Pass the new props to FeatureInspector:
+
+```jsx
+<FeatureInspector
+  // ... existing props
+  isHidden={featureContext.selectedFeature ? hiddenFeatureIds.has(featureContext.selectedFeature.id) : false}
+  onToggleHidden={() => {
+    if (featureContext.selectedFeature) {
+      handleToggleVisibility(featureContext.selectedFeature.id);
+    }
+  }}
+/>
+```
+
+---
+
+## Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/hooks/useFeatureRenderer.ts` | Fix effect dependencies to prevent re-initialization on visibility toggle |
+| `src/components/editor/FeatureInspector.tsx` | Add `isHidden` prop, `onToggleHidden` prop, and eye toggle button |
+| `src/pages/TrackEditor.tsx` | Pass visibility state and toggle handler to FeatureInspector |
 
 ---
 
 ## Result
 
 After these changes:
-1. Features will appear correctly when returning to the Track Editor
-2. Features will show/hide correctly when switching between Fan/Media/Ops views
-3. Both renderers will be synchronized with the shared map state
-4. No more timing race conditions between setup and data update effects
-
+1. Clicking the eye icon in the Feature List will immediately show/hide the feature without flickering
+2. The Feature Inspector will have a matching eye toggle button for the selected feature
+3. Both toggles will work consistently and in sync
+4. Navigating between modes will not affect visibility state
