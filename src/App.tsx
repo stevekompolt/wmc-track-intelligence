@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { TrackProvider } from "@/contexts/TrackContext";
 import { ViewpointProvider } from "@/contexts/ViewpointContext";
 import { CinematicProvider } from "@/contexts/CinematicContext";
+import { OverlayProvider } from "@/contexts/OverlayContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "./pages/Login";
@@ -38,7 +39,9 @@ const App = () => (
                 <TrackProvider>
                   <ViewpointProvider>
                     <CinematicProvider>
-                      <AppLayout />
+                      <OverlayProvider>
+                        <AppLayout />
+                      </OverlayProvider>
                     </CinematicProvider>
                   </ViewpointProvider>
                 </TrackProvider>
