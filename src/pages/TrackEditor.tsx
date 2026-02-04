@@ -401,6 +401,8 @@ export default function TrackEditor() {
               <FeatureInspector
                 feature={featureContext.selectedFeature}
                 isEditingGeometry={editingGeometryFeatureId === featureContext.selectedFeature?.id}
+                isHidden={featureContext.selectedFeature ? hiddenFeatureIds.has(featureContext.selectedFeature.id) : false}
+                onToggleHidden={featureContext.selectedFeature ? () => handleToggleVisibility(featureContext.selectedFeature!.id) : undefined}
                 onUpdateName={(name) => {
                   if (featureContext.selectedFeature) {
                     featureContext.updateName(featureContext.selectedFeature.id, name);

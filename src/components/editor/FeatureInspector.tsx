@@ -1,7 +1,7 @@
 // Feature Inspector component for editing feature properties
 
 import { useState, useEffect, useCallback } from 'react';
-import { Trash2, MapPin, Spline, Hexagon, Move } from 'lucide-react';
+import { Trash2, MapPin, Spline, Hexagon, Move, Eye, EyeOff } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ import { FEATURE_COLORS, FEATURE_ICONS } from '@/types/feature';
 interface FeatureInspectorProps {
   feature: VenueFeature | null;
   isEditingGeometry: boolean;
+  isHidden?: boolean;
+  onToggleHidden?: () => void;
   onUpdateName: (name: string) => void;
   onUpdateDescription: (description: string) => void;
   onUpdateStyle: (style: Partial<FeatureStyle>) => void;
@@ -54,6 +56,8 @@ const formatCoordinates = (feature: VenueFeature): string => {
 export function FeatureInspector({
   feature,
   isEditingGeometry,
+  isHidden,
+  onToggleHidden,
   onUpdateName,
   onUpdateDescription,
   onUpdateStyle,
@@ -100,17 +104,30 @@ export function FeatureInspector({
 
   return (
     <div className="flex flex-col gap-4 p-3">
-      {/* Name & Description */}
+      {/* Name & Visibility Toggle */}
       <div className="space-y-2">
         <div>
           <Label htmlFor="feature-name" className="text-xs">Name</Label>
-          <Input
-            id="feature-name"
-            value={localName}
-            onChange={(e) => setLocalName(e.target.value)}
-            onBlur={handleNameBlur}
-            className="h-8 text-sm"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              id="feature-name"
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              onBlur={handleNameBlur}
+              className="h-8 text-sm flex-1"
+            />
+            {onToggleHidden && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={onToggleHidden}
+                title={isHidden ? "Show on map" : "Hide on map"}
+              >
+                {isHidden ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            )}
+          </div>
         </div>
         <div>
           <Label htmlFor="feature-desc" className="text-xs">Description</Label>
