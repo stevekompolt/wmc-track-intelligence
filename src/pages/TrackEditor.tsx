@@ -49,6 +49,20 @@ export default function TrackEditor() {
   const [editorMode, setEditorMode] = useState<EditorMode>('features');
   const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
   const [editingGeometryFeatureId, setEditingGeometryFeatureId] = useState<string | null>(null);
+  const [hiddenFeatureIds, setHiddenFeatureIds] = useState<Set<string>>(new Set());
+
+  // Toggle feature visibility on map
+  const handleToggleVisibility = useCallback((featureId: string) => {
+    setHiddenFeatureIds(prev => {
+      const next = new Set(prev);
+      if (next.has(featureId)) {
+        next.delete(featureId);
+      } else {
+        next.add(featureId);
+      }
+      return next;
+    });
+  }, []);
 
   // Memoize venue coordinates to prevent unnecessary re-renders
   const venueCoords: VenueCoords | null = useMemo(() => {
@@ -146,6 +160,7 @@ export default function TrackEditor() {
     drawingMode: featureDrawing.mode,
     selectedFeatureId: featureEditor.selectedFeature?.id || null,
     editingGeometryFeatureId,
+    hiddenFeatureIds,
     onFeatureClick: featureEditor.selectFeature,
   });
 
@@ -334,6 +349,8 @@ export default function TrackEditor() {
               features={featureEditor.features}
               selectedFeature={featureEditor.selectedFeature}
               onSelectFeature={handleSelectFeature}
+              hiddenFeatureIds={hiddenFeatureIds}
+              onToggleVisibility={handleToggleVisibility}
             />
             
             {/* Feature Inspector */}

@@ -280,30 +280,81 @@ export function useFeatureGeometryEditor({
 
   // Create/remove markers and editing layers when editing state changes
   useEffect(() => {
-    if (isEditing && map && feature) {
+    if (!isEditing || !map || !feature) {
       clearMarkers();
       removeEditingLayers();
-      
-      // Add editing preview layers first, then markers on top
-      if (map.isStyleLoaded()) {
-        addEditingLayers();
-        createMarkers();
+      return;
+    }
+
+    // Clean up first
+    clearMarkers();
+    removeEditingLayers();
+
+    // Inline layer creation to avoid stale closure issues
+    const createLayersAndMarkers = () => {
+      // Skip if already added (shouldn't happen but safety check)
+      if (editingLayersAddedRef.current) return;
+
+      // Add source with current feature data
+      if (!map.getSource(EDITING_SOURCE_ID)) {
+        map.addSource(EDITING_SOURCE_ID, {
+          type: 'geojson',
+          data: featureToGeoJSON(feature),
+        });
       } else {
-        map.once('style.load', () => {
-          addEditingLayers();
-          createMarkers();
+        // Update existing source with current data
+        const source = map.getSource(EDITING_SOURCE_ID) as mapboxgl.GeoJSONSource;
+        source.setData(featureToGeoJSON(feature));
+      }
+
+      // Add fill layer for polygons
+      if (!map.getLayer(EDITING_FILL_LAYER)) {
+        map.addLayer({
+          id: EDITING_FILL_LAYER,
+          type: 'fill',
+          source: EDITING_SOURCE_ID,
+          filter: ['==', ['geometry-type'], 'Polygon'],
+          paint: {
+            'fill-color': feature.style.fillColor,
+            'fill-opacity': feature.style.fillOpacity,
+          },
         });
       }
+
+      // Add stroke layer for lines and polygons
+      if (!map.getLayer(EDITING_STROKE_LAYER)) {
+        map.addLayer({
+          id: EDITING_STROKE_LAYER,
+          type: 'line',
+          source: EDITING_SOURCE_ID,
+          filter: ['any',
+            ['==', ['geometry-type'], 'Polygon'],
+            ['==', ['geometry-type'], 'LineString']
+          ],
+          paint: {
+            'line-color': feature.style.color,
+            'line-width': feature.style.strokeWidth,
+            'line-opacity': feature.style.opacity,
+          },
+        });
+      }
+
+      editingLayersAddedRef.current = true;
+      createMarkers();
+    };
+
+    // Add editing preview layers first, then markers on top
+    if (map.isStyleLoaded()) {
+      createLayersAndMarkers();
     } else {
-      clearMarkers();
-      removeEditingLayers();
+      map.once('style.load', createLayersAndMarkers);
     }
 
     return () => {
       clearMarkers();
       removeEditingLayers();
     };
-  }, [isEditing, map, feature?.id, clearMarkers, createMarkers, addEditingLayers, removeEditingLayers]);
+  }, [isEditing, map, feature, clearMarkers, createMarkers, removeEditingLayers, featureToGeoJSON]);
 
   // Update marker positions when geometry changes (but not during drag)
   useEffect(() => {

@@ -8,6 +8,8 @@ interface CollapsibleFeatureListProps {
   features: VenueFeature[];
   selectedFeature: VenueFeature | null;
   onSelectFeature: (featureId: string | null) => void;
+  hiddenFeatureIds: Set<string>;
+  onToggleVisibility: (featureId: string) => void;
 }
 
 const FeatureTypeIcon = ({ type, color }: { type: VenueFeature['type']; color: string }) => {
@@ -27,6 +29,8 @@ export function CollapsibleFeatureList({
   features,
   selectedFeature,
   onSelectFeature,
+  hiddenFeatureIds,
+  onToggleVisibility,
 }: CollapsibleFeatureListProps) {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -52,6 +56,8 @@ export function CollapsibleFeatureList({
           features={features}
           selectedFeatureId={selectedFeature?.id || null}
           onSelectFeature={onSelectFeature}
+          hiddenFeatureIds={hiddenFeatureIds}
+          onToggleVisibility={onToggleVisibility}
         />
       </CollapsibleContent>
     </Collapsible>
