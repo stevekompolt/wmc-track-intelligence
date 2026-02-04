@@ -1,133 +1,100 @@
 
-# Auto-Detect Track Asphalt Feature
+# Display Features Across All Views with Mode-Aware Visibility
 
-## Overview
+## Problem
 
-Add a new "Auto-Detect Track" capability to the Feature Toolbox that analyzes satellite imagery visible in the current map view and automatically generates an editable polygon feature representing the detected track asphalt surface.
+Features created in the Track Editor are not showing in Fan, Media, or Ops views because:
 
----
-
-## How It Works
-
-The detection process uses client-side image analysis on a snapshot of the map canvas:
-
-1. **Capture**: Take a snapshot of the current Mapbox canvas (satellite imagery)
-2. **Analyze**: Process the image to identify dark asphalt pixels using color thresholding
-3. **Trace**: Convert detected pixels into a polygon boundary using contour tracing
-4. **Create**: Generate an editable VenueFeature polygon that the user can refine
+1. **Rendering is Editor-Only**: The `useFeatureRenderer` hook is only called in `TrackEditor.tsx`
+2. **Cleanup on Unmount**: When navigating away from `/editor`, the TrackEditor component unmounts and removes all feature layers from the map
+3. **No Shared Feature State**: Other views don't load or render features at all
+4. **Visibility Flags Unused**: Each feature has `visibleToFans`, `visibleToMedia`, `visibleToOps` flags, but these are only editable - they're never used to filter what's shown in each view
 
 ---
 
-## Technical Approach
+## Solution Architecture
 
-### Detection Algorithm
-
-Since track asphalt is typically dark gray/black against lighter surroundings, we use **color thresholding** in HSL color space:
-
-| Step | Description |
-|------|-------------|
-| 1. Canvas Capture | Use `map.getCanvas().toDataURL()` to get current view as image |
-| 2. Create Analysis Canvas | Draw image to offscreen canvas for pixel access |
-| 3. Pixel Classification | For each pixel, check if it matches "asphalt" criteria: low saturation + low lightness |
-| 4. Contour Extraction | Use marching squares algorithm to trace the boundary of detected regions |
-| 5. Coordinate Conversion | Convert pixel coords back to geographic [lng, lat] using `map.unproject()` |
-| 6. Simplification | Reduce polygon complexity using Douglas-Peucker algorithm |
-
-### Detection Parameters (User Adjustable)
-
-- **Darkness Threshold**: How dark a pixel must be (default: lightness < 35%)
-- **Saturation Threshold**: Max color saturation for gray detection (default: < 20%)
-- **Min Area**: Minimum detected area to include (filters noise)
-- **Simplification Tolerance**: How much to smooth the resulting polygon
-
----
-
-## New Files
-
-### `src/hooks/useAsphaltDetection.ts`
-
-Core detection logic hook:
+Move feature loading and rendering to the shared map layer, with mode-aware visibility filtering.
 
 ```text
-useAsphaltDetection({
-  map: mapboxgl.Map,
-  onDetectionComplete: (geometry: PolygonGeometry) => void,
-})
-
-Returns:
-- isDetecting: boolean
-- progress: number (0-100)
-- detectAsphalt: () => Promise<void>
-- cancelDetection: () => void
+SharedMapContainer
+    │
+    ├── TrackMap (already shared)
+    │
+    └── SharedFeatureRenderer (NEW)
+            │
+            ├── Loads features for current track
+            ├── Filters by current mode's visibility
+            └── Renders read-only layers on map
 ```
 
-### `src/lib/imageAnalysis.ts`
-
-Image processing utilities:
-
-```text
-- captureMapCanvas(map) -> ImageData
-- classifyAsphaltPixels(imageData, thresholds) -> boolean[][]
-- traceContours(binaryMask) -> number[][]
-- pixelsToGeoCoords(pixels, map, bounds) -> [number, number][]
-- simplifyPolygon(coords, tolerance) -> [number, number][]
-```
+Each view can optionally add editing capabilities on top (TrackEditor adds drawing, selection, geometry editing).
 
 ---
 
-## UI Changes
+## Technical Changes
 
-### File: `src/pages/TrackEditor.tsx`
+### File 1: Create `src/contexts/FeatureContext.tsx`
 
-Add "Detect Track" button to Feature Toolbox:
+A new context to share feature state across all views:
 
-| Element | Description |
+| Export | Description |
+|--------|-------------|
+| `FeatureProvider` | Wraps the app and provides feature state |
+| `useFeatureContext` | Hook to access features in any component |
+| Features loaded by venue | Uses `selectedTrack.id` to load features |
+| Mode-aware filtering | Exposes `visibleFeatures` filtered by current mode |
+
+### File 2: Create `src/hooks/useSharedFeatureRenderer.ts`
+
+A read-only version of the feature renderer for non-editor views:
+
+| Feature | Description |
 |---------|-------------|
-| New Button | "Detect Track" with a scan/magic-wand icon |
-| Detection Dialog | Modal showing progress and preview of detection |
-| Settings Panel | Optional: sliders for threshold adjustments |
+| Mode-aware filtering | Only shows features where the mode's visibility flag is true |
+| No editing support | No click handlers, no drawing preview, no geometry editing |
+| Shared across views | Runs in SharedMapContainer, persists across navigation |
 
-### Detection Flow
+### File 3: Update `src/components/layout/SharedMapContainer.tsx`
 
-```text
-User clicks "Detect Track"
-    ↓
-Switch to satellite view if not already
-    ↓
-Show detection dialog with progress
-    ↓
-Capture current map view
-    ↓
-Analyze pixels → Show preview overlay
-    ↓
-User clicks "Apply" or "Cancel"
-    ↓
-If Apply: Create new polygon feature named "Track Surface"
-```
+Integrate the shared feature rendering:
+
+| Change | Description |
+|--------|-------------|
+| Get map instance | Add state to capture map ref when loaded |
+| Use FeatureContext | Get features from the shared context |
+| Use useSharedFeatureRenderer | Render features with mode filtering |
+
+### File 4: Update `src/pages/TrackEditor.tsx`
+
+Modify to work with the shared feature context:
+
+| Change | Description |
+|--------|-------------|
+| Use FeatureContext | Get features from context instead of local hook |
+| Keep editor-only rendering | Still use `useFeatureRenderer` for editing overlays (selection highlight, drawing preview) |
+| Handle layer conflicts | Disable shared renderer when editor-specific layers are active |
+
+### File 5: Update `src/components/layout/AppLayout.tsx`
+
+Wrap the app with FeatureProvider:
+
+| Change | Description |
+|--------|-------------|
+| Add FeatureProvider | Wrap content so features are available everywhere |
 
 ---
 
-## Component: DetectTrackDialog
+## Mode-Aware Visibility Logic
 
-New dialog component for the detection workflow:
+When filtering features for display:
 
-```text
-┌─────────────────────────────────────────┐
-│  DETECT TRACK SURFACE                 X │
-├─────────────────────────────────────────┤
-│                                         │
-│   [Preview of detected boundary]        │
-│                                         │
-├─────────────────────────────────────────┤
-│  Sensitivity                            │
-│  ○───────●──────────○  Medium          │
-│                                         │
-│  Min Area                               │
-│  ○──●────────────────○  Small          │
-├─────────────────────────────────────────┤
-│           [Cancel]    [Apply Detection] │
-└─────────────────────────────────────────┘
-```
+| Mode | Filter Logic |
+|------|-------------|
+| `editor` | Show all features (editor sees everything) |
+| `fan` | Show features where `visibleToFans === true` |
+| `media` | Show features where `visibleToMedia === true` |
+| `ops` | Show features where `visibleToOps === true` |
 
 ---
 
@@ -135,59 +102,24 @@ New dialog component for the detection workflow:
 
 | File | Purpose |
 |------|---------|
-| `src/lib/imageAnalysis.ts` | Pixel analysis and contour tracing utilities |
-| `src/hooks/useAsphaltDetection.ts` | Detection state management and orchestration |
-| `src/components/editor/DetectTrackDialog.tsx` | UI dialog for detection workflow |
-
----
+| `src/contexts/FeatureContext.tsx` | Shared feature state and loading |
+| `src/hooks/useSharedFeatureRenderer.ts` | Read-only feature rendering for non-editor views |
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/pages/TrackEditor.tsx` | Add "Detect Track" button and integrate dialog |
-| `src/components/editor/TrackMap.tsx` | Add `captureCanvas()` method to imperative handle |
+| `src/components/layout/SharedMapContainer.tsx` | Add shared feature rendering |
+| `src/components/layout/AppLayout.tsx` | Add FeatureProvider wrapper |
+| `src/pages/TrackEditor.tsx` | Use shared context, handle layer coordination |
 
 ---
 
-## Generated Feature Properties
+## Result
 
-When detection succeeds, a new feature is created with:
+After this change:
 
-| Property | Value |
-|----------|-------|
-| name | "Track Surface" (user can rename) |
-| type | "polygon" |
-| geometry | Detected polygon coordinates |
-| style.color | "#333333" (dark gray) |
-| style.fillOpacity | 0.3 |
-| status | "draft" |
-| description | "Auto-detected track surface" |
-
-The feature is immediately selectable and editable using the existing geometry editing tools, allowing users to refine the detected boundary.
-
----
-
-## Limitations and Considerations
-
-| Consideration | Approach |
-|---------------|----------|
-| Accuracy | Color-based detection works best on high-contrast satellite imagery; may need manual refinement |
-| Map Style | Works best with satellite/satellite-streets styles; will prompt user to switch if on a different style |
-| Complex Tracks | May detect multiple disconnected regions for complex track layouts (e.g., figure-8 tracks) |
-| Processing Time | Canvas analysis is synchronous but fast for typical viewport sizes |
-| Browser Support | Uses standard Canvas 2D API, widely supported |
-
----
-
-## Implementation Phases
-
-**Phase 1 - Core Detection (This Plan)**
-- Canvas capture and pixel analysis
-- Basic contour tracing
-- Feature creation with detected polygon
-
-**Phase 2 - Refinements (Future)**
-- Machine learning-based detection for better accuracy
-- Multi-polygon support for complex track layouts
-- Edge detection for more precise boundaries
+1. Features created in Track Editor will appear in all other views
+2. Visibility toggles (Fans/Media/Ops) in the Feature Inspector will control which views show each feature
+3. Only published features should optionally be shown (if desired), or all features shown in editor mode
+4. The editor retains full editing capabilities (drawing, selection, geometry editing)
