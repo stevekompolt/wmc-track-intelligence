@@ -278,69 +278,88 @@ export function useFeatureGeometryEditor({
     markersRef.current = newMarkers;
   }, [map, feature, getCoordinates, buildGeometry, updateEditingSource]);
 
+  // Track feature ID to detect when we switch features vs just feature updates
+  const currentFeatureIdRef = useRef<string | null>(null);
+
   // Create/remove markers and editing layers when editing state changes
   useEffect(() => {
     if (!isEditing || !map || !feature) {
       clearMarkers();
       removeEditingLayers();
+      currentFeatureIdRef.current = null;
       return;
     }
 
-    // Clean up first
+    // Only do full cleanup and recreation when feature ID changes or starting editing
+    const featureChanged = currentFeatureIdRef.current !== feature.id;
+    currentFeatureIdRef.current = feature.id;
+
+    if (!featureChanged && editingLayersAddedRef.current) {
+      // Feature reference changed but same ID - just update source data
+      updateEditingSource(feature.geometry);
+      return;
+    }
+
+    // Full cleanup before creating new layers
     clearMarkers();
     removeEditingLayers();
 
-    // Inline layer creation to avoid stale closure issues
+    // Inline layer creation
     const createLayersAndMarkers = () => {
-      // Skip if already added (shouldn't happen but safety check)
       if (editingLayersAddedRef.current) return;
 
-      // Add source with current feature data
-      if (!map.getSource(EDITING_SOURCE_ID)) {
-        map.addSource(EDITING_SOURCE_ID, {
-          type: 'geojson',
-          data: featureToGeoJSON(feature),
-        });
-      } else {
-        // Update existing source with current data
-        const source = map.getSource(EDITING_SOURCE_ID) as mapboxgl.GeoJSONSource;
-        source.setData(featureToGeoJSON(feature));
-      }
+      try {
+        // Add source with current feature data
+        if (!map.getSource(EDITING_SOURCE_ID)) {
+          map.addSource(EDITING_SOURCE_ID, {
+            type: 'geojson',
+            data: featureToGeoJSON(feature),
+          });
+        } else {
+          const source = map.getSource(EDITING_SOURCE_ID) as mapboxgl.GeoJSONSource;
+          source.setData(featureToGeoJSON(feature));
+        }
 
-      // Add fill layer for polygons
-      if (!map.getLayer(EDITING_FILL_LAYER)) {
-        map.addLayer({
-          id: EDITING_FILL_LAYER,
-          type: 'fill',
-          source: EDITING_SOURCE_ID,
-          filter: ['==', ['geometry-type'], 'Polygon'],
-          paint: {
-            'fill-color': feature.style.fillColor,
-            'fill-opacity': feature.style.fillOpacity,
-          },
-        });
-      }
+        // Add fill layer for polygons
+        if (!map.getLayer(EDITING_FILL_LAYER)) {
+          map.addLayer({
+            id: EDITING_FILL_LAYER,
+            type: 'fill',
+            source: EDITING_SOURCE_ID,
+            filter: ['==', ['geometry-type'], 'Polygon'],
+            paint: {
+              'fill-color': feature.style.fillColor,
+              'fill-opacity': feature.style.fillOpacity,
+            },
+          });
+        }
 
-      // Add stroke layer for lines and polygons
-      if (!map.getLayer(EDITING_STROKE_LAYER)) {
-        map.addLayer({
-          id: EDITING_STROKE_LAYER,
-          type: 'line',
-          source: EDITING_SOURCE_ID,
-          filter: ['any',
-            ['==', ['geometry-type'], 'Polygon'],
-            ['==', ['geometry-type'], 'LineString']
-          ],
-          paint: {
-            'line-color': feature.style.color,
-            'line-width': feature.style.strokeWidth,
-            'line-opacity': feature.style.opacity,
-          },
-        });
-      }
+        // Add stroke layer for lines and polygons - ensure minimum width
+        if (!map.getLayer(EDITING_STROKE_LAYER)) {
+          const lineWidth = Math.max(feature.style.strokeWidth, 3);
+          map.addLayer({
+            id: EDITING_STROKE_LAYER,
+            type: 'line',
+            source: EDITING_SOURCE_ID,
+            filter: ['any',
+              ['==', ['geometry-type'], 'Polygon'],
+              ['==', ['geometry-type'], 'LineString']
+            ],
+            paint: {
+              'line-color': feature.style.color,
+              'line-width': lineWidth,
+              'line-opacity': feature.style.opacity,
+            },
+          });
+        }
 
-      editingLayersAddedRef.current = true;
-      createMarkers();
+        editingLayersAddedRef.current = true;
+        
+        // Create markers after layers are ready
+        createMarkers();
+      } catch (e) {
+        console.error('Error creating editing layers:', e);
+      }
     };
 
     // Add editing preview layers first, then markers on top
@@ -353,8 +372,10 @@ export function useFeatureGeometryEditor({
     return () => {
       clearMarkers();
       removeEditingLayers();
+      currentFeatureIdRef.current = null;
     };
-  }, [isEditing, map, feature, clearMarkers, createMarkers, removeEditingLayers, featureToGeoJSON]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing, map, feature?.id, clearMarkers, createMarkers, removeEditingLayers, featureToGeoJSON, updateEditingSource]);
 
   // Update marker positions when geometry changes (but not during drag)
   useEffect(() => {

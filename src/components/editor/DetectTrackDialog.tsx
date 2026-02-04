@@ -1,4 +1,4 @@
-import { Scan, Loader2 } from 'lucide-react';
+import { Scan, Loader2, Route } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { DetectionThresholds } from '@/lib/imageAnalysis';
 
 interface DetectTrackDialogProps {
@@ -17,10 +18,15 @@ interface DetectTrackDialogProps {
   isDetecting: boolean;
   detectedCoords: [number, number][][] | null;
   thresholds: DetectionThresholds;
+  useBoundary: boolean;
+  bufferWidth: number;
+  selectedLineCoords: [number, number][] | null;
   onClose: () => void;
   onRunDetection: () => void;
   onApply: () => void;
   onUpdateThreshold: <K extends keyof DetectionThresholds>(key: K, value: DetectionThresholds[K]) => void;
+  onSetUseBoundary: (value: boolean) => void;
+  onSetBufferWidth: (value: number) => void;
 }
 
 export function DetectTrackDialog({
@@ -28,13 +34,19 @@ export function DetectTrackDialog({
   isDetecting,
   detectedCoords,
   thresholds,
+  useBoundary,
+  bufferWidth,
+  selectedLineCoords,
   onClose,
   onRunDetection,
   onApply,
   onUpdateThreshold,
+  onSetUseBoundary,
+  onSetBufferWidth,
 }: DetectTrackDialogProps) {
   const hasDetection = detectedCoords && detectedCoords[0]?.length >= 4;
-  const pointCount = hasDetection ? detectedCoords![0].length - 1 : 0; // -1 for closing point
+  const pointCount = hasDetection ? detectedCoords![0].length - 1 : 0;
+  const hasSelectedLine = selectedLineCoords && selectedLineCoords.length >= 2;
   
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -51,6 +63,63 @@ export function DetectTrackDialog({
         </DialogHeader>
         
         <div className="space-y-6 py-4">
+          {/* Boundary Line Option */}
+          {hasSelectedLine && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-4">
+              <div className="flex items-start space-x-3">
+                <Checkbox
+                  id="use-boundary"
+                  checked={useBoundary}
+                  onCheckedChange={(checked) => onSetUseBoundary(checked === true)}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="use-boundary" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+                    <Route className="h-4 w-4 text-primary" />
+                    Use selected track line as boundary
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Detection will only look for asphalt within the specified distance of the traced line.
+                  </p>
+                </div>
+              </div>
+              
+              {useBoundary && (
+                <div className="space-y-2 pl-6">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Buffer Width</Label>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {bufferWidth}m
+                    </span>
+                  </div>
+                  <Slider
+                    value={[bufferWidth]}
+                    onValueChange={([v]) => onSetBufferWidth(v)}
+                    min={20}
+                    max={300}
+                    step={10}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Search corridor width around the line
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* No line selected info */}
+          {!hasSelectedLine && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground flex items-center gap-2">
+                <Route className="h-4 w-4" />
+                <span>
+                  <strong>Tip:</strong> Draw a line tracing the track first, select it, then open this dialog 
+                  to constrain detection to the track area.
+                </span>
+              </p>
+            </div>
+          )}
+          
           {/* Status / Preview Info */}
           <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
             {isDetecting ? (

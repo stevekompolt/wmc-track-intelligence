@@ -263,37 +263,173 @@ export function pixelsToGeoCoords(
   });
 }
 
+
 /**
- * Main detection function - runs the full pipeline
+ * Create a buffer polygon around a line geometry
+ * Uses perpendicular offset at each point for simplicity
+ */
+export function bufferLine(
+  lineCoords: [number, number][],
+  bufferMeters: number,
+  map: mapboxgl.Map
+): [number, number][][] {
+  if (lineCoords.length < 2) return [];
+
+  // Approximate meters per degree at the center of the line
+  const centerLat = lineCoords.reduce((sum, c) => sum + c[1], 0) / lineCoords.length;
+  const metersPerDegreeLat = 111320;
+  const metersPerDegreeLng = metersPerDegreeLat * Math.cos(centerLat * Math.PI / 180);
+  
+  const bufferLat = bufferMeters / metersPerDegreeLat;
+  const bufferLng = bufferMeters / metersPerDegreeLng;
+
+  // Build left and right offset polylines
+  const leftOffsets: [number, number][] = [];
+  const rightOffsets: [number, number][] = [];
+
+  for (let i = 0; i < lineCoords.length; i++) {
+    const [x, y] = lineCoords[i];
+    
+    // Calculate perpendicular direction based on segment
+    let dx = 0, dy = 0;
+    
+    if (i === 0 && lineCoords.length > 1) {
+      dx = lineCoords[1][0] - x;
+      dy = lineCoords[1][1] - y;
+    } else if (i === lineCoords.length - 1 && lineCoords.length > 1) {
+      dx = x - lineCoords[i - 1][0];
+      dy = y - lineCoords[i - 1][1];
+    } else if (lineCoords.length > 1) {
+      // Average of incoming and outgoing directions
+      const dx1 = x - lineCoords[i - 1][0];
+      const dy1 = y - lineCoords[i - 1][1];
+      const dx2 = lineCoords[i + 1][0] - x;
+      const dy2 = lineCoords[i + 1][1] - y;
+      dx = (dx1 + dx2) / 2;
+      dy = (dy1 + dy2) / 2;
+    }
+
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0) {
+      // Perpendicular unit vector (rotate 90 degrees)
+      const perpX = -dy / len;
+      const perpY = dx / len;
+      
+      leftOffsets.push([x + perpX * bufferLng, y + perpY * bufferLat]);
+      rightOffsets.push([x - perpX * bufferLng, y - perpY * bufferLat]);
+    } else {
+      leftOffsets.push([x, y]);
+      rightOffsets.push([x, y]);
+    }
+  }
+
+  // Combine into closed polygon: left forward, right backward
+  const polygon: [number, number][] = [
+    ...leftOffsets,
+    ...rightOffsets.reverse(),
+    leftOffsets[0], // close the ring
+  ];
+
+  return [polygon];
+}
+
+/**
+ * Apply a polygon mask to the asphalt detection
+ * Only considers pixels within the boundary polygon
+ */
+export function applyBoundaryMask(
+  mask: boolean[][],
+  boundaryPixels: [number, number][],
+  width: number,
+  height: number
+): boolean[][] {
+  if (boundaryPixels.length < 3) return mask;
+
+  // Create a boundary mask using ray casting
+  const boundaryMask: boolean[][] = Array(height).fill(null).map(() => Array(width).fill(false));
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (pointInPolygon(x, y, boundaryPixels)) {
+        boundaryMask[y][x] = true;
+      }
+    }
+  }
+
+  // Combine with asphalt mask
+  const result: boolean[][] = Array(height).fill(null).map(() => Array(width).fill(false));
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      result[y][x] = mask[y][x] && boundaryMask[y][x];
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Ray casting algorithm to test if point is inside polygon
+ */
+function pointInPolygon(x: number, y: number, polygon: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Main detection function with optional boundary constraint
  */
 export function detectAsphaltPolygon(
   map: mapboxgl.Map,
-  thresholds: DetectionThresholds = DEFAULT_THRESHOLDS
+  thresholds: DetectionThresholds = DEFAULT_THRESHOLDS,
+  boundaryLineCoords?: [number, number][],
+  bufferMeters?: number
 ): [number, number][][] | null {
   // 1. Capture canvas
   const imageData = captureMapCanvas(map);
+  const { width, height } = imageData;
   
   // 2. Classify pixels
   let mask = classifyAsphaltPixels(imageData, thresholds);
   
-  // 3. Filter small regions
+  // 3. Apply boundary mask if provided
+  if (boundaryLineCoords && boundaryLineCoords.length >= 2 && bufferMeters && bufferMeters > 0) {
+    const bufferPolygon = bufferLine(boundaryLineCoords, bufferMeters, map);
+    if (bufferPolygon.length > 0 && bufferPolygon[0].length >= 3) {
+      // Convert geo coords to pixel coords
+      const boundaryPixels = bufferPolygon[0].map(([lng, lat]) => {
+        const point = map.project([lng, lat]);
+        return [point.x, point.y] as [number, number];
+      });
+      mask = applyBoundaryMask(mask, boundaryPixels, width, height);
+    }
+  }
+  
+  // 4. Filter small regions
   mask = filterSmallRegions(mask, thresholds.minAreaPixels);
   
-  // 4. Trace contour
+  // 5. Trace contour
   const contourPixels = traceContour(mask);
   
   if (contourPixels.length < 3) {
     return null;
   }
   
-  // 5. Simplify
+  // 6. Simplify
   const simplifiedPixels = simplifyPolygon(contourPixels, thresholds.simplificationTolerance);
   
   if (simplifiedPixels.length < 3) {
     return null;
   }
   
-  // 6. Convert to geographic coordinates
+  // 7. Convert to geographic coordinates
   const geoCoords = pixelsToGeoCoords(simplifiedPixels, map);
   
   // Close the polygon
@@ -310,17 +446,21 @@ export function detectAsphaltPolygon(
  */
 export function createDetectionPreview(
   map: mapboxgl.Map,
-  thresholds: DetectionThresholds
+  thresholds: DetectionThresholds,
+  boundaryLineCoords?: [number, number][],
+  bufferMeters?: number
 ): { cleanup: () => void; detectedCoords: [number, number][][] | null } {
   const sourceId = 'asphalt-detection-preview';
   const fillLayerId = 'asphalt-detection-fill';
   const strokeLayerId = 'asphalt-detection-stroke';
+  const boundaryLayerId = 'asphalt-detection-boundary';
   
   // Run detection
-  const polygonRings = detectAsphaltPolygon(map, thresholds);
+  const polygonRings = detectAsphaltPolygon(map, thresholds, boundaryLineCoords, bufferMeters);
   
   // Cleanup function
   const cleanup = () => {
+    if (map.getLayer(boundaryLayerId)) map.removeLayer(boundaryLayerId);
     if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
     if (map.getLayer(strokeLayerId)) map.removeLayer(strokeLayerId);
     if (map.getSource(sourceId)) map.removeSource(sourceId);

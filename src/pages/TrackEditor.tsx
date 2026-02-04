@@ -486,10 +486,24 @@ export default function TrackEditor() {
         isDetecting={asphaltDetection.isDetecting}
         detectedCoords={asphaltDetection.detectedCoords}
         thresholds={asphaltDetection.thresholds}
+        useBoundary={asphaltDetection.useBoundary}
+        bufferWidth={asphaltDetection.bufferWidth}
+        selectedLineCoords={
+          featureContext.selectedFeature?.type === 'line' 
+            ? (featureContext.selectedFeature.geometry as { coordinates: [number, number][] }).coordinates 
+            : null
+        }
         onClose={asphaltDetection.closeDialog}
-        onRunDetection={asphaltDetection.runDetection}
+        onRunDetection={() => {
+          const lineCoords = featureContext.selectedFeature?.type === 'line'
+            ? (featureContext.selectedFeature.geometry as { coordinates: [number, number][] }).coordinates
+            : undefined;
+          asphaltDetection.runDetection(lineCoords);
+        }}
         onApply={asphaltDetection.applyDetection}
         onUpdateThreshold={asphaltDetection.updateThreshold}
+        onSetUseBoundary={asphaltDetection.setUseBoundary}
+        onSetBufferWidth={asphaltDetection.setBufferWidth}
       />
     </div>
   );

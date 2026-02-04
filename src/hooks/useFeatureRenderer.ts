@@ -163,14 +163,14 @@ export function useFeatureRenderer({
             'line-color': ['get', 'color'],
             'line-width': [
               'case',
-              ['get', 'selected'], 4,
-              ['get', 'strokeWidth']
+              ['get', 'selected'], ['+', ['max', ['get', 'strokeWidth'], 2], 2],
+              ['max', ['get', 'strokeWidth'], 2]
             ],
             'line-opacity': ['get', 'opacity'],
           },
         });
 
-        // Lines layer
+        // Lines layer - ensure minimum width of 2 and selected adds +2
         map.addLayer({
           id: LAYER_LINES,
           type: 'line',
@@ -180,8 +180,8 @@ export function useFeatureRenderer({
             'line-color': ['get', 'color'],
             'line-width': [
               'case',
-              ['get', 'selected'], 4,
-              ['get', 'strokeWidth']
+              ['get', 'selected'], ['+', ['max', ['get', 'strokeWidth'], 2], 2],
+              ['max', ['get', 'strokeWidth'], 2]
             ],
             'line-opacity': ['get', 'opacity'],
           },
