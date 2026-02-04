@@ -49,76 +49,98 @@ export function useSharedFeatureRenderer({
     };
   }, []);
 
-  // Initialize source and layers
+  // Initialize source and layers - includes features and currentMode in deps to ensure sync
   useEffect(() => {
     if (!map) return;
     
     cleanupDoneRef.current = false;
+    
+    const layers = [
+      SHARED_LAYER_POLYGONS_FILL,
+      SHARED_LAYER_POLYGONS_STROKE,
+      SHARED_LAYER_LINES,
+      SHARED_LAYER_POINTS,
+    ];
 
     const setupLayers = () => {
-      // Don't add if already exists
-      if (map.getSource(SHARED_SOURCE_ID)) {
-        sourceAddedRef.current = true;
-        return;
+      // Check if source already exists
+      const sourceExists = !!map.getSource(SHARED_SOURCE_ID);
+      
+      if (!sourceExists) {
+        map.addSource(SHARED_SOURCE_ID, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+
+        // Polygon fill layer
+        map.addLayer({
+          id: SHARED_LAYER_POLYGONS_FILL,
+          type: 'fill',
+          source: SHARED_SOURCE_ID,
+          filter: ['==', ['geometry-type'], 'Polygon'],
+          paint: {
+            'fill-color': ['get', 'fillColor'],
+            'fill-opacity': ['get', 'fillOpacity'],
+          },
+        });
+
+        // Polygon stroke layer
+        map.addLayer({
+          id: SHARED_LAYER_POLYGONS_STROKE,
+          type: 'line',
+          source: SHARED_SOURCE_ID,
+          filter: ['==', ['geometry-type'], 'Polygon'],
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': ['get', 'strokeWidth'],
+            'line-opacity': ['get', 'opacity'],
+          },
+        });
+
+        // Lines layer
+        map.addLayer({
+          id: SHARED_LAYER_LINES,
+          type: 'line',
+          source: SHARED_SOURCE_ID,
+          filter: ['==', ['geometry-type'], 'LineString'],
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': ['get', 'strokeWidth'],
+            'line-opacity': ['get', 'opacity'],
+          },
+        });
+
+        // Points layer
+        map.addLayer({
+          id: SHARED_LAYER_POINTS,
+          type: 'circle',
+          source: SHARED_SOURCE_ID,
+          filter: ['==', ['geometry-type'], 'Point'],
+          paint: {
+            'circle-radius': 8,
+            'circle-color': ['get', 'color'],
+            'circle-opacity': ['get', 'opacity'],
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 2,
+          },
+        });
       }
-
-      map.addSource(SHARED_SOURCE_ID, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
+      
       sourceAddedRef.current = true;
-
-      // Polygon fill layer
-      map.addLayer({
-        id: SHARED_LAYER_POLYGONS_FILL,
-        type: 'fill',
-        source: SHARED_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: {
-          'fill-color': ['get', 'fillColor'],
-          'fill-opacity': ['get', 'fillOpacity'],
-        },
-      });
-
-      // Polygon stroke layer
-      map.addLayer({
-        id: SHARED_LAYER_POLYGONS_STROKE,
-        type: 'line',
-        source: SHARED_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-width': ['get', 'strokeWidth'],
-          'line-opacity': ['get', 'opacity'],
-        },
-      });
-
-      // Lines layer
-      map.addLayer({
-        id: SHARED_LAYER_LINES,
-        type: 'line',
-        source: SHARED_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'LineString'],
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-width': ['get', 'strokeWidth'],
-          'line-opacity': ['get', 'opacity'],
-        },
-      });
-
-      // Points layer
-      map.addLayer({
-        id: SHARED_LAYER_POINTS,
-        type: 'circle',
-        source: SHARED_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Point'],
-        paint: {
-          'circle-radius': 8,
-          'circle-color': ['get', 'color'],
-          'circle-opacity': ['get', 'opacity'],
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2,
-        },
+      
+      // CRITICAL: Immediately update source data after confirming source exists
+      // This fixes the race condition where data effect ran before source was ready
+      const source = map.getSource(SHARED_SOURCE_ID) as mapboxgl.GeoJSONSource;
+      if (source) {
+        source.setData(toGeoJSON(features));
+      }
+      
+      // Set visibility based on current mode - editor has its own layers
+      const visibility = currentMode === 'editor' ? 'none' : 'visible';
+      layers.forEach(layerId => {
+        if (map.getLayer(layerId)) {
+          map.setLayoutProperty(layerId, 'visibility', visibility);
+        }
       });
     };
 
@@ -138,53 +160,26 @@ export function useSharedFeatureRenderer({
     return () => {
       map.off('style.load', handleStyleLoad);
       
-      // Cleanup layers and sources when hook unmounts
-      // But only if we haven't already cleaned up
+      // DON'T remove layers on cleanup - just hide them
+      // SharedMapContainer stays mounted, so cleanup only runs on unmount
       if (cleanupDoneRef.current) return;
       cleanupDoneRef.current = true;
       
       if (map && map.getStyle()) {
         try {
-          if (map.getLayer(SHARED_LAYER_POINTS)) map.removeLayer(SHARED_LAYER_POINTS);
-          if (map.getLayer(SHARED_LAYER_LINES)) map.removeLayer(SHARED_LAYER_LINES);
-          if (map.getLayer(SHARED_LAYER_POLYGONS_STROKE)) map.removeLayer(SHARED_LAYER_POLYGONS_STROKE);
-          if (map.getLayer(SHARED_LAYER_POLYGONS_FILL)) map.removeLayer(SHARED_LAYER_POLYGONS_FILL);
-          if (map.getSource(SHARED_SOURCE_ID)) map.removeSource(SHARED_SOURCE_ID);
+          layers.forEach(layerId => {
+            if (map.getLayer(layerId)) {
+              map.setLayoutProperty(layerId, 'visibility', 'none');
+            }
+          });
         } catch (e) {
           // Ignore cleanup errors
         }
       }
       sourceAddedRef.current = false;
     };
-  }, [map]);
+  }, [map, features, currentMode, toGeoJSON]);
 
-  // Update features data when features or mode changes
-  useEffect(() => {
-    if (!map || !sourceAddedRef.current) return;
-
-    const source = map.getSource(SHARED_SOURCE_ID) as mapboxgl.GeoJSONSource;
-    if (source) {
-      source.setData(toGeoJSON(features));
-    }
-  }, [map, features, toGeoJSON]);
-
-  // Hide shared layers in editor mode (editor has its own layers with selection support)
-  useEffect(() => {
-    if (!map || !sourceAddedRef.current) return;
-
-    const visibility = currentMode === 'editor' ? 'none' : 'visible';
-    
-    const layers = [
-      SHARED_LAYER_POLYGONS_FILL,
-      SHARED_LAYER_POLYGONS_STROKE,
-      SHARED_LAYER_LINES,
-      SHARED_LAYER_POINTS,
-    ];
-
-    layers.forEach(layerId => {
-      if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, 'visibility', visibility);
-      }
-    });
-  }, [map, currentMode]);
+  // Note: Data updates and visibility toggling are now handled in setupLayers
+  // to prevent race conditions between setup and data effects
 }
