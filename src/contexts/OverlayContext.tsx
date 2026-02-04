@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import type { MapOverlay, BoundingBox, OverlayStatus, SnapSource } from '@/types/overlay';
+import { calculateSnapBounds, getImageAspectRatio } from '@/types/overlay';
 import type { AppMode } from '@/types/viewpoint';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useCurrentMode } from '@/hooks/useCurrentMode';
@@ -127,21 +128,28 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Create a new overlay
+  // Create a new overlay with auto-snap to venue bounds
   const createOverlay = useCallback(async (name?: string): Promise<MapOverlay | null> => {
     if (!selectedTrack?.id) return null;
 
     try {
       const overlay = await overlaysApi.createOverlay(selectedTrack.id, name);
-      setOverlays(prev => [...prev, overlay].sort((a, b) => a.zOrder - b.zOrder));
-      setSelectedOverlayId(overlay.id);
-      return overlay;
+      
+      // Auto-position at venue center
+      const venueCoords = { lat: selectedTrack.latitude, lng: selectedTrack.longitude };
+      const bounds = calculateSnapBounds(venueCoords, 1, 0.015);
+      const updatedOverlay = await overlaysApi.updateOverlay(overlay.id, { boundingBox: bounds });
+      
+      const finalOverlay = updatedOverlay || overlay;
+      setOverlays(prev => [...prev, finalOverlay].sort((a, b) => a.zOrder - b.zOrder));
+      setSelectedOverlayId(finalOverlay.id);
+      return finalOverlay;
     } catch (err) {
       setError('Failed to create overlay');
       console.error('Error creating overlay:', err);
       return null;
     }
-  }, [selectedTrack?.id]);
+  }, [selectedTrack?.id, selectedTrack?.latitude, selectedTrack?.longitude]);
 
   // Update an overlay
   const updateOverlay = useCallback(async (
@@ -198,9 +206,30 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     await updateOverlay(overlayId, { boundingBox: { ...overlay.boundingBox, ...boxUpdates } });
   }, [overlays, updateOverlay]);
 
+  // Update image URL with auto-snap to venue bounds based on aspect ratio
   const updateImageUrl = useCallback(async (overlayId: string, imageUrl: string) => {
-    await updateOverlay(overlayId, { imageUrl });
-  }, [updateOverlay]);
+    if (!selectedTrack || !imageUrl) {
+      await updateOverlay(overlayId, { imageUrl });
+      return;
+    }
+
+    try {
+      // Get aspect ratio and auto-fit to venue bounds
+      const aspectRatio = await getImageAspectRatio(imageUrl);
+      const venueCoords = { lat: selectedTrack.latitude, lng: selectedTrack.longitude };
+      const bounds = calculateSnapBounds(venueCoords, aspectRatio, 0.015);
+      
+      // Update both image URL and bounding box
+      await updateOverlay(overlayId, { 
+        imageUrl,
+        boundingBox: bounds,
+      });
+    } catch (err) {
+      // Fallback: just update the image URL
+      console.error('Error calculating auto-snap bounds:', err);
+      await updateOverlay(overlayId, { imageUrl });
+    }
+  }, [selectedTrack, updateOverlay]);
 
   const updateOpacity = useCallback(async (overlayId: string, opacity: number) => {
     await updateOverlay(overlayId, { opacity });
