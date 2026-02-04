@@ -318,15 +318,20 @@ export function useMultiOverlayRenderer({
     if (!map) return;
     
     const setupLayers = () => {
-      // Get IDs of overlays that should be rendered
+      // Get all overlay IDs currently in the data
+      const allOverlayIds = new Set(overlays.map(o => o.id));
+      
+      // Get IDs of overlays that should be rendered (visible + have image)
       const visibleOverlays = overlays.filter(o => 
         !hiddenOverlayIds.has(o.id) && o.imageUrl
       );
       const visibleIds = new Set(visibleOverlays.map(o => o.id));
       
-      // Remove overlays no longer in list
+      // Remove overlays that are either:
+      // 1. No longer in the overlays array (deleted)
+      // 2. Hidden or missing imageUrl
       renderedOverlayIdsRef.current.forEach(id => {
-        if (!visibleIds.has(id)) {
+        if (!allOverlayIds.has(id) || !visibleIds.has(id)) {
           removeOverlayLayer(id);
         }
       });
