@@ -6,11 +6,38 @@ import { ViewpointSelector } from '@/components/viewpoints/ViewpointSelector';
 import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
+import { useFeatureContext } from '@/contexts/FeatureContext';
+import { useSharedFeatureRenderer } from '@/hooks/useSharedFeatureRenderer';
+import mapboxgl from 'mapbox-gl';
 
 export function SharedMapContainer() {
   const { selectedTrack } = useTrackContext();
   const { mapRef } = useViewpointContext();
+  const { visibleFeatures, currentMode } = useFeatureContext();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
+
+  // Get map instance when available
+  useEffect(() => {
+    const checkMapInstance = () => {
+      const instance = mapRef.current?.getMapInstance?.() as mapboxgl.Map | null;
+      if (instance) {
+        setMapInstance(instance);
+      }
+    };
+    
+    // Check immediately and after a delay
+    checkMapInstance();
+    const timeout = setTimeout(checkMapInstance, 1000);
+    return () => clearTimeout(timeout);
+  }, [mapRef, selectedTrack]);
+
+  // Render features with mode-aware visibility
+  useSharedFeatureRenderer({
+    map: mapInstance,
+    features: visibleFeatures,
+    currentMode,
+  });
 
   if (!selectedTrack) {
     return (

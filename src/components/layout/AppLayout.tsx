@@ -27,6 +27,7 @@ import {
 import { cn } from '@/lib/utils';
 import { GlobalTrackSelector } from '@/components/layout/GlobalTrackSelector';
 import { SharedMapContainer } from '@/components/layout/SharedMapContainer';
+import { FeatureProvider } from '@/contexts/FeatureContext';
 
 interface NavItem {
   id: string;
@@ -235,15 +236,17 @@ export function AppLayout() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden relative">
-        {/* Persistent Map Layer */}
-        {showMap && <SharedMapContainer />}
-        
-        {/* Mode Overlay Layer */}
-        {/* Important: keep this layer pointer-events-none so the map still receives pan/zoom.
-            Individual pages (toolbars/panels) opt back in with pointer-events-auto. */}
-        <div className={cn("absolute inset-0", showMap && "pointer-events-none")}>
-          <Outlet />
-        </div>
+        <FeatureProvider>
+          {/* Persistent Map Layer */}
+          {showMap && <SharedMapContainer />}
+          
+          {/* Mode Overlay Layer */}
+          {/* Important: keep this layer pointer-events-none so the map still receives pan/zoom.
+              Individual pages (toolbars/panels) opt back in with pointer-events-auto. */}
+          <div className={cn("absolute inset-0", showMap && "pointer-events-none")}>
+            <Outlet />
+          </div>
+        </FeatureProvider>
       </main>
 
       {/* Status Bar */}

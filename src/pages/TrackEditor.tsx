@@ -11,9 +11,9 @@ import { CollapsibleFeatureList } from '@/components/editor/CollapsibleFeatureLi
 import { DetectTrackDialog } from '@/components/editor/DetectTrackDialog';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
+import { useFeatureContext } from '@/contexts/FeatureContext';
 import { useOverlayEditor } from '@/hooks/useOverlayEditor';
 import { useMapOverlayRenderer } from '@/hooks/useMapOverlayRenderer';
-import { useFeatureEditor } from '@/hooks/useFeatureEditor';
 import { useFeatureDrawing } from '@/hooks/useFeatureDrawing';
 import { useFeatureRenderer } from '@/hooks/useFeatureRenderer';
 import { useFeatureGeometryEditor } from '@/hooks/useFeatureGeometryEditor';
@@ -77,19 +77,17 @@ export default function TrackEditor() {
 
   const overlayEditor = useOverlayEditor(selectedTrack?.id, venueCoords);
 
-  // Feature editor hook
-  const featureEditor = useFeatureEditor({
-    venueId: selectedTrack?.id,
-  });
+  // Feature context - shared across all views
+  const featureContext = useFeatureContext();
 
   // Handle feature complete from drawing
   const handleFeatureComplete = useCallback((type: FeatureType, geometry: FeatureGeometry) => {
-    featureEditor.createFeature(type, geometry, DEFAULT_FEATURE_STYLE);
-  }, [featureEditor]);
+    featureContext.createFeature(type, geometry, DEFAULT_FEATURE_STYLE);
+  }, [featureContext]);
 
   // Handle detected polygon from asphalt detection
   const handleDetectionComplete = useCallback(async (geometry: PolygonGeometry) => {
-    const feature = await featureEditor.createFeature('polygon', geometry, {
+    const feature = await featureContext.createFeature('polygon', geometry, {
       ...DEFAULT_FEATURE_STYLE,
       color: '#333333',
       fillColor: '#333333',
@@ -97,10 +95,10 @@ export default function TrackEditor() {
     });
     // Update name and description after creation
     if (feature) {
-      await featureEditor.updateName(feature.id, 'Track Surface');
-      await featureEditor.updateDescription(feature.id, 'Auto-detected track surface');
+      await featureContext.updateName(feature.id, 'Track Surface');
+      await featureContext.updateDescription(feature.id, 'Auto-detected track surface');
     }
-  }, [featureEditor]);
+  }, [featureContext]);
 
   // Asphalt detection hook
   const asphaltDetection = useAsphaltDetection({
@@ -175,21 +173,21 @@ export default function TrackEditor() {
     onMoveDrag: handleMoveDrag,
   });
 
-  // Initialize feature renderer
+  // Initialize feature renderer (editor-specific with selection and editing support)
   useFeatureRenderer({
     map: mapInstance,
-    features: featureEditor.features,
+    features: featureContext.features,
     partialCoords: featureDrawing.partialCoords,
     drawingMode: featureDrawing.mode,
-    selectedFeatureId: featureEditor.selectedFeature?.id || null,
+    selectedFeatureId: featureContext.selectedFeature?.id || null,
     editingGeometryFeatureId,
     hiddenFeatureIds,
-    onFeatureClick: featureEditor.selectFeature,
+    onFeatureClick: featureContext.selectFeature,
   });
 
   // Geometry editing for selected feature
   const editingFeature = editingGeometryFeatureId 
-    ? featureEditor.features.find(f => f.id === editingGeometryFeatureId) || null
+    ? featureContext.features.find(f => f.id === editingGeometryFeatureId) || null
     : null;
 
   useFeatureGeometryEditor({
@@ -198,7 +196,7 @@ export default function TrackEditor() {
     isEditing: !!editingGeometryFeatureId,
     onGeometryUpdate: (geometry) => {
       if (editingGeometryFeatureId) {
-        featureEditor.updateGeometry(editingGeometryFeatureId, geometry);
+        featureContext.updateGeometry(editingGeometryFeatureId, geometry);
       }
     },
   });
@@ -207,17 +205,17 @@ export default function TrackEditor() {
   const handleStartDrawing = useCallback((type: FeatureType) => {
     // Exit geometry editing and deselect feature when starting to draw
     setEditingGeometryFeatureId(null);
-    featureEditor.selectFeature(null);
+    featureContext.selectFeature(null);
     featureDrawing.startDrawing(type);
-  }, [featureEditor, featureDrawing]);
+  }, [featureContext, featureDrawing]);
 
   // Stop geometry editing when selecting a different feature or deselecting
   const handleSelectFeature = useCallback((featureId: string | null) => {
     if (featureId !== editingGeometryFeatureId) {
       setEditingGeometryFeatureId(null);
     }
-    featureEditor.selectFeature(featureId);
-  }, [featureEditor, editingGeometryFeatureId]);
+    featureContext.selectFeature(featureId);
+  }, [featureContext, editingGeometryFeatureId]);
 
   // Get current drawing instruction
   const drawingInstruction = featureDrawing.mode !== 'none' ? DRAWING_INSTRUCTIONS[featureDrawing.mode] : null;
@@ -386,8 +384,8 @@ export default function TrackEditor() {
             
             {/* Feature List - Collapsible */}
             <CollapsibleFeatureList
-              features={featureEditor.features}
-              selectedFeature={featureEditor.selectedFeature}
+              features={featureContext.features}
+              selectedFeature={featureContext.selectedFeature}
               onSelectFeature={handleSelectFeature}
               hiddenFeatureIds={hiddenFeatureIds}
               onToggleVisibility={handleToggleVisibility}
@@ -401,45 +399,45 @@ export default function TrackEditor() {
             </div>
             <div className="flex-1 overflow-auto">
               <FeatureInspector
-                feature={featureEditor.selectedFeature}
-                isEditingGeometry={editingGeometryFeatureId === featureEditor.selectedFeature?.id}
+                feature={featureContext.selectedFeature}
+                isEditingGeometry={editingGeometryFeatureId === featureContext.selectedFeature?.id}
                 onUpdateName={(name) => {
-                  if (featureEditor.selectedFeature) {
-                    featureEditor.updateName(featureEditor.selectedFeature.id, name);
+                  if (featureContext.selectedFeature) {
+                    featureContext.updateName(featureContext.selectedFeature.id, name);
                   }
                 }}
                 onUpdateDescription={(desc) => {
-                  if (featureEditor.selectedFeature) {
-                    featureEditor.updateDescription(featureEditor.selectedFeature.id, desc);
+                  if (featureContext.selectedFeature) {
+                    featureContext.updateDescription(featureContext.selectedFeature.id, desc);
                   }
                 }}
                 onUpdateStyle={(style) => {
-                  if (featureEditor.selectedFeature) {
-                    featureEditor.updateStyle(featureEditor.selectedFeature.id, style);
+                  if (featureContext.selectedFeature) {
+                    featureContext.updateStyle(featureContext.selectedFeature.id, style);
                   }
                 }}
                 onUpdateVisibility={(visibility) => {
-                  if (featureEditor.selectedFeature) {
-                    featureEditor.updateVisibility(featureEditor.selectedFeature.id, visibility);
+                  if (featureContext.selectedFeature) {
+                    featureContext.updateVisibility(featureContext.selectedFeature.id, visibility);
                   }
                 }}
                 onUpdateStatus={(status) => {
-                  if (featureEditor.selectedFeature) {
-                    featureEditor.updateStatus(featureEditor.selectedFeature.id, status);
+                  if (featureContext.selectedFeature) {
+                    featureContext.updateStatus(featureContext.selectedFeature.id, status);
                   }
                 }}
                 onStartEditingGeometry={() => {
-                  if (featureEditor.selectedFeature) {
-                    setEditingGeometryFeatureId(featureEditor.selectedFeature.id);
+                  if (featureContext.selectedFeature) {
+                    setEditingGeometryFeatureId(featureContext.selectedFeature.id);
                   }
                 }}
                 onStopEditingGeometry={() => {
                   setEditingGeometryFeatureId(null);
                 }}
                 onDelete={() => {
-                  if (featureEditor.selectedFeature) {
+                  if (featureContext.selectedFeature) {
                     setEditingGeometryFeatureId(null);
-                    featureEditor.deleteFeature(featureEditor.selectedFeature.id);
+                    featureContext.deleteFeature(featureContext.selectedFeature.id);
                   }
                 }}
               />
