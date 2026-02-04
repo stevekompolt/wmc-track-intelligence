@@ -286,6 +286,17 @@ export default function TrackEditor() {
     }
   }, [overlayContext]);
 
+  // Handle delete item from unified list
+  const handleDeleteItem = useCallback((id: string, type: SelectionType) => {
+    if (type === 'feature') {
+      setEditingGeometryFeatureId(null);
+      featureContext.deleteFeature(id);
+    } else if (type === 'overlay') {
+      overlayContext.deleteOverlay(id);
+    }
+    handleSelectItem(null, null);
+  }, [featureContext, overlayContext, handleSelectItem]);
+
   // Get current drawing instruction
   const drawingInstruction = featureDrawing.mode !== 'none' ? DRAWING_INSTRUCTIONS[featureDrawing.mode] : null;
 
@@ -461,6 +472,7 @@ export default function TrackEditor() {
           hiddenOverlayIds={overlayContext.hiddenOverlayIds}
           onToggleFeatureVisibility={handleToggleFeatureVisibility}
           onToggleOverlayVisibility={overlayContext.toggleOverlayVisibility}
+          onDeleteItem={handleDeleteItem}
         />
         
         {/* Dynamic Inspector - shows Feature or Overlay inspector based on selection */}
@@ -512,6 +524,12 @@ export default function TrackEditor() {
               }}
               onUndo={() => {}}
               onCreateOverlay={handleCreateOverlay}
+              onDelete={() => {
+                if (overlayContext.selectedOverlay) {
+                  overlayContext.deleteOverlay(overlayContext.selectedOverlay.id);
+                  handleSelectItem(null, null);
+                }
+              }}
             />
           ) : (
             <FeatureInspector
