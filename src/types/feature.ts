@@ -4,6 +4,8 @@ export type FeatureType = 'point' | 'line' | 'polygon';
 
 export type DrawingMode = 'none' | 'point' | 'line' | 'polygon';
 
+export type GeometryEditMode = 'none' | 'editing';
+
 export type FeatureStatus = 'draft' | 'published';
 
 export type IconKey = 

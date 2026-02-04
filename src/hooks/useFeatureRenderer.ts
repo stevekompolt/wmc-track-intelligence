@@ -10,6 +10,7 @@ interface UseFeatureRendererOptions {
   partialCoords: [number, number][];
   drawingMode: DrawingMode;
   selectedFeatureId: string | null;
+  editingGeometryFeatureId: string | null;
   onFeatureClick: (featureId: string) => void;
 }
 
@@ -28,6 +29,7 @@ export function useFeatureRenderer({
   partialCoords,
   drawingMode,
   selectedFeatureId,
+  editingGeometryFeatureId,
   onFeatureClick,
 }: UseFeatureRendererOptions): void {
   const sourceAddedRef = useRef(false);
@@ -278,15 +280,19 @@ export function useFeatureRenderer({
     };
   }, [map]);
 
-  // Update features data
+  // Update features data (filter out feature being edited geometrically)
   useEffect(() => {
     if (!map || !sourceAddedRef.current) return;
 
     const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
     if (source) {
-      source.setData(toGeoJSON(features));
+      // Hide the feature being edited (it's rendered by vertex markers instead)
+      const renderableFeatures = editingGeometryFeatureId
+        ? features.filter(f => f.id !== editingGeometryFeatureId)
+        : features;
+      source.setData(toGeoJSON(renderableFeatures));
     }
-  }, [map, features, toGeoJSON]);
+  }, [map, features, toGeoJSON, editingGeometryFeatureId]);
 
   // Update preview data
   useEffect(() => {

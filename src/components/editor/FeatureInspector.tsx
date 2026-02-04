@@ -1,7 +1,7 @@
 // Feature Inspector component for editing feature properties
 
 import { useState, useEffect, useCallback } from 'react';
-import { Trash2, MapPin, Spline, Hexagon } from 'lucide-react';
+import { Trash2, MapPin, Spline, Hexagon, Move } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -14,11 +14,14 @@ import { FEATURE_COLORS, FEATURE_ICONS } from '@/types/feature';
 
 interface FeatureInspectorProps {
   feature: VenueFeature | null;
+  isEditingGeometry: boolean;
   onUpdateName: (name: string) => void;
   onUpdateDescription: (description: string) => void;
   onUpdateStyle: (style: Partial<FeatureStyle>) => void;
   onUpdateVisibility: (visibility: { fans?: boolean; media?: boolean; ops?: boolean }) => void;
   onUpdateStatus: (status: FeatureStatus) => void;
+  onStartEditingGeometry: () => void;
+  onStopEditingGeometry: () => void;
   onDelete: () => void;
 }
 
@@ -50,11 +53,14 @@ const formatCoordinates = (feature: VenueFeature): string => {
 
 export function FeatureInspector({
   feature,
+  isEditingGeometry,
   onUpdateName,
   onUpdateDescription,
   onUpdateStyle,
   onUpdateVisibility,
   onUpdateStatus,
+  onStartEditingGeometry,
+  onStopEditingGeometry,
   onDelete,
 }: FeatureInspectorProps) {
   const [localName, setLocalName] = useState('');
@@ -119,13 +125,42 @@ export function FeatureInspector({
         </div>
       </div>
 
-      {/* Type & Coordinates (read-only) */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5">
-          <FeatureTypeIcon type={feature.type} />
-          <span className="capitalize">{feature.type}</span>
+      {/* Geometry Section */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <FeatureTypeIcon type={feature.type} />
+              <span className="capitalize">{feature.type}</span>
+            </div>
+            <span className="font-mono">{formatCoordinates(feature)}</span>
+          </div>
         </div>
-        <span className="font-mono">{formatCoordinates(feature)}</span>
+        
+        {isEditingGeometry ? (
+          <div className="flex items-center gap-2 p-2 rounded bg-primary/10 border border-primary/20">
+            <Move className="h-4 w-4 text-primary" />
+            <span className="text-xs text-primary flex-1">Drag vertices to reposition</span>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onStopEditingGeometry}
+              className="h-6 px-2 text-xs"
+            >
+              Done
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onStartEditingGeometry}
+            className="w-full h-8 text-xs"
+          >
+            <Move className="h-3 w-3 mr-2" />
+            Edit Geometry
+          </Button>
+        )}
       </div>
 
       {/* Style Section */}
