@@ -266,7 +266,8 @@ export function useSharedFeatureRenderer({
       if (cleanupDoneRef.current) return;
       cleanupDoneRef.current = true;
       
-      if (map && map.getStyle()) {
+      // Check map is valid and style is loaded before cleanup
+      if (map && map.isStyleLoaded()) {
         try {
           featureLayers.forEach(layerId => {
             if (map.getLayer(layerId)) {
@@ -274,7 +275,7 @@ export function useSharedFeatureRenderer({
             }
           });
         } catch (e) {
-          // Ignore cleanup errors
+          // Ignore cleanup errors during map destruction
         }
       }
       sourceAddedRef.current = false;
