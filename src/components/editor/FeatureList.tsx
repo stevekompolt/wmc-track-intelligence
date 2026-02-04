@@ -10,9 +10,11 @@ interface FeatureListProps {
   features: VenueFeature[];
   selectedFeatureId: string | null;
   onSelectFeature: (featureId: string) => void;
-  hiddenFeatureIds: Set<string>;
-  onToggleVisibility: (featureId: string) => void;
+  hiddenFeatureIds?: Set<string>;
+  onToggleVisibility?: (featureId: string) => void;
 }
+
+const EMPTY_SET = new Set<string>();
 
 const FeatureTypeIcon = ({ type, color }: { type: VenueFeature['type']; color: string }) => {
   const iconClass = "h-3.5 w-3.5";
@@ -31,7 +33,7 @@ export function FeatureList({
   features,
   selectedFeatureId,
   onSelectFeature,
-  hiddenFeatureIds,
+  hiddenFeatureIds = EMPTY_SET,
   onToggleVisibility,
 }: FeatureListProps) {
   if (features.length === 0) {
@@ -65,20 +67,22 @@ export function FeatureList({
                 <FeatureTypeIcon type={feature.type} color={feature.style.color} />
                 <span className="flex-1 text-xs truncate">{feature.name}</span>
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleVisibility(feature.id);
-                }}
-                className="p-1 hover:bg-muted rounded transition-colors"
-                title={isHidden ? "Show on map" : "Hide on map"}
-              >
-                {isHidden ? (
-                  <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-                ) : (
-                  <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                )}
-              </button>
+              {onToggleVisibility && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleVisibility(feature.id);
+                  }}
+                  className="p-1 hover:bg-muted rounded transition-colors"
+                  title={isHidden ? "Show on map" : "Hide on map"}
+                >
+                  {isHidden ? (
+                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </button>
+              )}
               <Badge
                 variant={feature.status === 'published' ? 'default' : 'secondary'}
                 className="text-[10px] px-1.5 py-0"
