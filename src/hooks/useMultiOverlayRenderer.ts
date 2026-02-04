@@ -391,25 +391,30 @@ export function useMultiOverlayRenderer({
       markersRef.current.forEach(m => m.remove());
       markersRef.current.clear();
       
-      if (map) {
-        // Remove all overlay layers
-        renderedOverlayIdsRef.current.forEach(id => {
-          const layerId = getLayerId(id);
-          const sourceId = getSourceId(id);
-          if (map.getLayer(layerId)) {
-            map.removeLayer(layerId);
+      // Check map is valid and style is loaded before cleanup
+      if (map && map.isStyleLoaded()) {
+        try {
+          // Remove all overlay layers
+          renderedOverlayIdsRef.current.forEach(id => {
+            const layerId = getLayerId(id);
+            const sourceId = getSourceId(id);
+            if (map.getLayer(layerId)) {
+              map.removeLayer(layerId);
+            }
+            if (map.getSource(sourceId)) {
+              map.removeSource(sourceId);
+            }
+          });
+          
+          // Remove ghost layer
+          if (map.getLayer(ghostLayerId)) {
+            map.removeLayer(ghostLayerId);
           }
-          if (map.getSource(sourceId)) {
-            map.removeSource(sourceId);
+          if (map.getSource(ghostSourceId)) {
+            map.removeSource(ghostSourceId);
           }
-        });
-        
-        // Remove ghost layer
-        if (map.getLayer(ghostLayerId)) {
-          map.removeLayer(ghostLayerId);
-        }
-        if (map.getSource(ghostSourceId)) {
-          map.removeSource(ghostSourceId);
+        } catch (e) {
+          // Ignore cleanup errors during map destruction
         }
       }
     };
