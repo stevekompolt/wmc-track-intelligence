@@ -189,7 +189,7 @@ export function FeatureInspector({
         {/* Opacity slider */}
         <div className="space-y-1.5">
           <div className="flex justify-between">
-            <Label className="text-xs">Opacity</Label>
+            <Label className="text-xs">Stroke Opacity</Label>
             <span className="text-xs text-muted-foreground">{Math.round(feature.style.opacity * 100)}%</span>
           </div>
           <Slider
