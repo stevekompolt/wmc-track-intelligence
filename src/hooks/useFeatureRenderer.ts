@@ -11,6 +11,7 @@ interface UseFeatureRendererOptions {
   drawingMode: DrawingMode;
   selectedFeatureId: string | null;
   editingGeometryFeatureId: string | null;
+  hiddenFeatureIds: Set<string>;
   onFeatureClick: (featureId: string) => void;
 }
 
@@ -30,6 +31,7 @@ export function useFeatureRenderer({
   drawingMode,
   selectedFeatureId,
   editingGeometryFeatureId,
+  hiddenFeatureIds,
   onFeatureClick,
 }: UseFeatureRendererOptions): void {
   const sourceAddedRef = useRef(false);
@@ -280,19 +282,20 @@ export function useFeatureRenderer({
     };
   }, [map]);
 
-  // Update features data (filter out feature being edited geometrically)
+  // Update features data (filter out feature being edited geometrically and hidden features)
   useEffect(() => {
     if (!map || !sourceAddedRef.current) return;
 
     const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
     if (source) {
       // Hide the feature being edited (it's rendered by vertex markers instead)
-      const renderableFeatures = editingGeometryFeatureId
-        ? features.filter(f => f.id !== editingGeometryFeatureId)
-        : features;
+      // Also hide features that are toggled off in the feature list
+      const renderableFeatures = features.filter(f => 
+        f.id !== editingGeometryFeatureId && !hiddenFeatureIds.has(f.id)
+      );
       source.setData(toGeoJSON(renderableFeatures));
     }
-  }, [map, features, toGeoJSON, editingGeometryFeatureId]);
+  }, [map, features, toGeoJSON, editingGeometryFeatureId, hiddenFeatureIds]);
 
   // Update preview data
   useEffect(() => {
