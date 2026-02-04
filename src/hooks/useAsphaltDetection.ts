@@ -17,11 +17,15 @@ interface UseAsphaltDetectionReturn {
   isDetecting: boolean;
   detectedCoords: [number, number][][] | null;
   thresholds: DetectionThresholds;
+  useBoundary: boolean;
+  bufferWidth: number;
   openDialog: () => void;
   closeDialog: () => void;
-  runDetection: () => void;
+  runDetection: (boundaryLineCoords?: [number, number][]) => void;
   applyDetection: () => void;
   updateThreshold: <K extends keyof DetectionThresholds>(key: K, value: DetectionThresholds[K]) => void;
+  setUseBoundary: (value: boolean) => void;
+  setBufferWidth: (value: number) => void;
 }
 
 export function useAsphaltDetection({
@@ -32,8 +36,11 @@ export function useAsphaltDetection({
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectedCoords, setDetectedCoords] = useState<[number, number][][] | null>(null);
   const [thresholds, setThresholds] = useState<DetectionThresholds>(DEFAULT_THRESHOLDS);
+  const [useBoundary, setUseBoundary] = useState(false);
+  const [bufferWidth, setBufferWidth] = useState(100); // meters
   
   const cleanupRef = useRef<(() => void) | null>(null);
+  const lastBoundaryRef = useRef<[number, number][] | undefined>(undefined);
 
   const cleanup = useCallback(() => {
     if (cleanupRef.current) {
@@ -52,18 +59,27 @@ export function useAsphaltDetection({
     cleanup();
     setIsDialogOpen(false);
     setThresholds(DEFAULT_THRESHOLDS);
+    setUseBoundary(false);
+    setBufferWidth(100);
+    lastBoundaryRef.current = undefined;
   }, [cleanup]);
 
-  const runDetection = useCallback(() => {
+  const runDetection = useCallback((boundaryLineCoords?: [number, number][]) => {
     if (!map) return;
     
     setIsDetecting(true);
     cleanup();
+    lastBoundaryRef.current = boundaryLineCoords;
     
     // Run detection (synchronous but wrapped for UI feedback)
     requestAnimationFrame(() => {
       try {
-        const result = createDetectionPreview(map, thresholds);
+        const result = createDetectionPreview(
+          map, 
+          thresholds,
+          useBoundary ? boundaryLineCoords : undefined,
+          useBoundary ? bufferWidth : undefined
+        );
         cleanupRef.current = result.cleanup;
         setDetectedCoords(result.detectedCoords);
       } catch (error) {
@@ -73,7 +89,7 @@ export function useAsphaltDetection({
         setIsDetecting(false);
       }
     });
-  }, [map, thresholds, cleanup]);
+  }, [map, thresholds, useBoundary, bufferWidth, cleanup]);
 
   const applyDetection = useCallback(() => {
     if (!detectedCoords || detectedCoords.length === 0) return;
@@ -96,15 +112,29 @@ export function useAsphaltDetection({
     cleanup();
   }, [cleanup]);
 
+  const handleSetUseBoundary = useCallback((value: boolean) => {
+    setUseBoundary(value);
+    cleanup();
+  }, [cleanup]);
+
+  const handleSetBufferWidth = useCallback((value: number) => {
+    setBufferWidth(value);
+    cleanup();
+  }, [cleanup]);
+
   return {
     isDialogOpen,
     isDetecting,
     detectedCoords,
     thresholds,
+    useBoundary,
+    bufferWidth,
     openDialog,
     closeDialog,
     runDetection,
     applyDetection,
     updateThreshold,
+    setUseBoundary: handleSetUseBoundary,
+    setBufferWidth: handleSetBufferWidth,
   };
 }
