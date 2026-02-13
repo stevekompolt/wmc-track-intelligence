@@ -1,135 +1,103 @@
 
-# Add Easy Delete for Map Layers
 
-## Overview
+# Fix: Image Overlays Not Appearing on Map After Upload
 
-Make it easy to delete any map layer (features or overlays) by adding delete functionality in two places:
-1. **Delete button in the Overlay Inspector** - Matching the existing pattern in Feature Inspector
-2. **Delete button in the Map Layers list** - Quick delete with confirmation for any item
+## Root Cause
 
-## Current State
+When an image is uploaded to an overlay, the flow is:
+1. `updateImageUrl` loads the image to get its aspect ratio (async)
+2. Calculates bounds and calls `updateOverlay` (another async step with 100ms API delay)
+3. State updates and the `useMultiOverlayRenderer` effect should re-run
 
-| Component | Delete Button | Status |
-|-----------|--------------|--------|
-| FeatureInspector | Yes (bottom of panel) | Working |
-| OverlayEditorPanel | No | **Needs adding** |
-| MapItemList | No | **Needs adding** |
+The problem is in `useMultiOverlayRenderer.ts` -- the sync effect has two issues:
+- A `map.once('style.load', setupLayers)` listener is registered but never cleaned up, which can cause stale closures to interfere with fresh renders
+- There's no fallback mechanism if the layer addition fails silently (e.g., Mapbox image source not loading a data URL in time)
 
 ## Changes
 
-### 1. Add Delete to OverlayEditorPanel
+### File: `src/hooks/useMultiOverlayRenderer.ts`
 
-Add a "Delete Overlay" button at the bottom of the panel (matching the FeatureInspector pattern).
+**Fix 1**: Clean up the `once` listener in the effect cleanup to prevent stale closures.
 
-**File**: `src/components/editor/OverlayEditorPanel.tsx`
-- Add `onDelete` prop to the component interface
-- Add destructive Button with Trash2 icon below the existing Save/Undo buttons
-- Button text: "Delete Overlay"
+**Fix 2**: After adding a new image source/layer, call `map.triggerRepaint()` to ensure the map redraws.
 
-### 2. Add Delete to MapItemList
+**Fix 3**: Add a secondary `map.on('idle')` listener that checks if any pending overlays need rendering -- this catches edge cases where the initial `addSource`/`addLayer` calls silently fail.
 
-Add a small trash icon button next to each item in the list for quick deletion.
-
-**File**: `src/components/editor/MapItemList.tsx`
-- Add `onDeleteItem` callback prop
-- Add Trash2 icon button next to each item (between eye toggle and status badge)
-- Include confirmation dialog to prevent accidental deletion
-
-### 3. Wire Up Delete in TrackEditor
-
-Connect the new delete callbacks to the context methods.
-
-**File**: `src/pages/TrackEditor.tsx`
-- Pass `onDelete` prop to OverlayEditorPanel, calling `overlayContext.deleteOverlay`
-- Clear selection after deletion
-
-### 4. Update CollapsibleMapItemList
-
-Pass through the delete callback to MapItemList.
-
-**File**: `src/components/editor/CollapsibleMapItemList.tsx`
-- Add `onDeleteItem` prop
-- Forward to MapItemList
-
-## UI Design
-
-### Map Layers List (each row)
-```
-[Icon] Layer Name      [Eye] [Trash] [Status]
-                         ^      ^
-                         |      +-- New delete button
-                         +-- Existing visibility toggle
-```
-
-### Delete Confirmation Dialog
-```
-+----------------------------------+
-|  Delete Layer?                   |
-|                                  |
-|  This will permanently delete    |
-|  "Track Surface" from the map.   |
-|                                  |
-|  This action cannot be undone.   |
-|                                  |
-|         [Cancel]  [Delete]       |
-+----------------------------------+
-```
-
-### Overlay Inspector (bottom section)
-```
-+----------------------------------+
-|  [Undo]  [   Save   ]            |  <- Existing
-+----------------------------------+
-|  [     Delete Overlay      ]     |  <- New button
-+----------------------------------+
-```
-
-## Technical Details
-
-### MapItemList Props Addition
+### Specific code changes in the sync effect (~line 315):
 
 ```typescript
-interface MapItemListProps {
-  // ... existing props
-  onDeleteItem?: (id: string, type: 'feature' | 'overlay') => void;
-}
+useEffect(() => {
+    if (!map) return;
+    
+    const setupLayers = () => {
+      const allOverlayIds = new Set(overlays.map(o => o.id));
+      const visibleOverlays = overlays.filter(o => 
+        !hiddenOverlayIds.has(o.id) && o.imageUrl
+      );
+      const visibleIds = new Set(visibleOverlays.map(o => o.id));
+      
+      renderedOverlayIdsRef.current.forEach(id => {
+        if (!allOverlayIds.has(id) || !visibleIds.has(id)) {
+          removeOverlayLayer(id);
+        }
+      });
+      
+      visibleOverlays.forEach(overlay => {
+        updateOverlayLayer(overlay);
+      });
+      
+      // Force repaint after layer changes
+      map.triggerRepaint();
+    };
+    
+    if (map.isStyleLoaded()) {
+      setupLayers();
+    } else {
+      map.once('style.load', setupLayers);
+    }
+    
+    const handleStyleLoad = () => {
+      renderedOverlayIdsRef.current.clear();
+      setupLayers();
+    };
+    map.on('style.load', handleStyleLoad);
+
+    return () => {
+      map.off('style.load', handleStyleLoad);
+      // Also remove the once listener to prevent stale closure
+      map.off('style.load', setupLayers);
+    };
+  }, [map, overlays, hiddenOverlayIds, updateOverlayLayer, removeOverlayLayer]);
 ```
 
-### OverlayEditorPanel Props Addition
+### In `updateOverlayLayer` callback:
+
+Add `map.triggerRepaint()` after adding a new source+layer:
 
 ```typescript
-interface OverlayEditorPanelProps {
-  // ... existing props
-  onDelete?: () => void;
-}
-```
+map.addLayer({
+  id: layerId,
+  type: 'raster',
+  source: sourceId,
+  paint: {
+    'raster-opacity': overlay.opacity,
+    'raster-fade-duration': 0,
+  },
+});
 
-### Delete Handler in TrackEditor
-
-```typescript
-const handleDeleteItem = useCallback((id: string, type: SelectionType) => {
-  if (type === 'feature') {
-    setEditingGeometryFeatureId(null);
-    featureContext.deleteFeature(id);
-  } else if (type === 'overlay') {
-    overlayContext.deleteOverlay(id);
-  }
-  handleSelectItem(null, null);
-}, [featureContext, overlayContext, handleSelectItem]);
+renderedOverlayIdsRef.current.add(overlay.id);
+map.triggerRepaint();  // <-- Ensure immediate visual update
 ```
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/editor/MapItemList.tsx` | Add delete button with confirmation dialog |
-| `src/components/editor/CollapsibleMapItemList.tsx` | Pass through delete callback |
-| `src/components/editor/OverlayEditorPanel.tsx` | Add delete button at bottom |
-| `src/pages/TrackEditor.tsx` | Wire up delete handlers |
+| File | Change |
+|------|--------|
+| `src/hooks/useMultiOverlayRenderer.ts` | Fix cleanup, add triggerRepaint after layer add |
 
-## Benefits
+## Impact
 
-1. Consistent delete UX across features and overlays
-2. Quick delete from list without needing to open inspector
-3. Confirmation dialog prevents accidental deletions
-4. Follows existing patterns used by FeatureInspector
+- Fixes regression where uploaded images don't appear on the map
+- No changes to data model or UI components
+- Defensive fix that handles edge cases in Mapbox rendering pipeline
+
