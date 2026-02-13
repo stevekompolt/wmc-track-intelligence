@@ -109,6 +109,7 @@ export function useMultiOverlayRenderer({
       });
       
       renderedOverlayIdsRef.current.add(overlay.id);
+      map.triggerRepaint();
     }
 
     // Update opacity
@@ -340,6 +341,9 @@ export function useMultiOverlayRenderer({
       visibleOverlays.forEach(overlay => {
         updateOverlayLayer(overlay);
       });
+      
+      // Force repaint after layer changes
+      map.triggerRepaint();
     };
     
     if (map.isStyleLoaded()) {
@@ -356,6 +360,8 @@ export function useMultiOverlayRenderer({
 
     return () => {
       map.off('style.load', handleStyleLoad);
+      // Also remove the once listener to prevent stale closure
+      map.off('style.load', setupLayers);
     };
   }, [map, overlays, hiddenOverlayIds, updateOverlayLayer, removeOverlayLayer]);
 
