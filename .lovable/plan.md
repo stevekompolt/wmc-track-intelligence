@@ -1,30 +1,64 @@
 
-
-# Fix: Ugly Blue/Red Styling on Image Button
+# Fix: Deleting Map Layer Doesn't Remove Image from Map
 
 ## Problem
-The "Image" button in the Feature Toolbox has an unattractive bright blue active/focus state with a red-ish outline, inconsistent with the other dark-themed buttons.
+When deleting an overlay from the Map Layers list, the entry disappears from the list but the image remains rendered on the map.
 
-## Change
+## Root Cause
+In `useMultiOverlayRenderer.ts`, the `updateOverlayLayer` function only tracks an overlay in `renderedOverlayIdsRef` when it **creates** a new source (the `else` branch). If the source already exists (e.g., after a style reload or re-render), the overlay ID is never added to the tracking set. Later, when `setupLayers` tries to clean up deleted overlays, it iterates `renderedOverlayIdsRef` -- but the ID isn't there, so `removeOverlayLayer` is never called and the layer remains on the map.
 
-**File: `src/pages/TrackEditor.tsx` (lines ~407-416)**
+## Fix
 
-Update the Image button to match the styling pattern of the other toolbox buttons. The other buttons toggle between `variant="default"` (active) and `variant="outline"` (inactive) based on drawing mode. The Image button should use the same `variant="outline"` style but with a `focus-visible` ring that matches the dark theme instead of the default blue ring.
+### File: `src/hooks/useMultiOverlayRenderer.ts`
 
-Add `focus-visible:ring-0` or use a muted focus style so it doesn't flash bright blue when clicked:
+Two changes:
 
-```tsx
-<Button
-  variant="outline"
-  size="sm"
-  className="h-9 justify-start gap-2 hover:border-primary hover:text-primary focus-visible:ring-1 focus-visible:ring-primary/50"
-  onClick={handleCreateOverlay}
-  disabled={featureDrawing.isDrawing}
->
+1. **Track overlays in both branches of `updateOverlayLayer`**: Move `renderedOverlayIdsRef.current.add(overlay.id)` so it runs whether the source is new or already exists.
+
+2. **Add a safety net in `setupLayers`**: Instead of only checking `renderedOverlayIdsRef`, also directly query the map for any overlay sources that match the naming pattern and should be removed. This handles edge cases where the ref gets out of sync.
+
+```typescript
+// In updateOverlayLayer - move tracking OUTSIDE the if/else
+if (source) {
+  source.updateImage({ url: overlay.imageUrl, coordinates });
+} else {
+  map.addSource(sourceId, { type: 'image', url: overlay.imageUrl, coordinates });
+  map.addLayer({ ... });
+  map.triggerRepaint();
+}
+// Always track, regardless of new vs existing
+renderedOverlayIdsRef.current.add(overlay.id);
 ```
 
-This removes the harsh default blue focus ring and replaces it with a subtle primary-colored ring that matches the dark UI theme.
+```typescript
+// In setupLayers - also check for orphaned layers directly on the map
+renderedOverlayIdsRef.current.forEach(id => {
+  if (!allOverlayIds.has(id) || !visibleIds.has(id)) {
+    removeOverlayLayer(id);
+  }
+});
+
+// Safety: check map directly for any orphaned overlay layers
+const style = map.getStyle();
+if (style?.sources) {
+  Object.keys(style.sources).forEach(srcId => {
+    if (srcId.startsWith('overlay-image-')) {
+      const overlayId = srcId.replace('overlay-image-', '');
+      if (!allOverlayIds.has(overlayId) || !visibleIds.has(overlayId)) {
+        removeOverlayLayer(overlayId);
+      }
+    }
+  });
+}
+```
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/hooks/useMultiOverlayRenderer.ts` | Fix overlay ID tracking + add orphaned layer cleanup |
 
 ## Impact
-- Visual-only change, no logic changes
-- Single line edit in `TrackEditor.tsx`
+- Ensures deleting an overlay from the list always removes its image from the map
+- No changes to UI components or data model
+- Defensive approach handles edge cases where tracking ref gets out of sync
