@@ -1,103 +1,30 @@
 
 
-# Fix: Image Overlays Not Appearing on Map After Upload
+# Fix: Ugly Blue/Red Styling on Image Button
 
-## Root Cause
+## Problem
+The "Image" button in the Feature Toolbox has an unattractive bright blue active/focus state with a red-ish outline, inconsistent with the other dark-themed buttons.
 
-When an image is uploaded to an overlay, the flow is:
-1. `updateImageUrl` loads the image to get its aspect ratio (async)
-2. Calculates bounds and calls `updateOverlay` (another async step with 100ms API delay)
-3. State updates and the `useMultiOverlayRenderer` effect should re-run
+## Change
 
-The problem is in `useMultiOverlayRenderer.ts` -- the sync effect has two issues:
-- A `map.once('style.load', setupLayers)` listener is registered but never cleaned up, which can cause stale closures to interfere with fresh renders
-- There's no fallback mechanism if the layer addition fails silently (e.g., Mapbox image source not loading a data URL in time)
+**File: `src/pages/TrackEditor.tsx` (lines ~407-416)**
 
-## Changes
+Update the Image button to match the styling pattern of the other toolbox buttons. The other buttons toggle between `variant="default"` (active) and `variant="outline"` (inactive) based on drawing mode. The Image button should use the same `variant="outline"` style but with a `focus-visible` ring that matches the dark theme instead of the default blue ring.
 
-### File: `src/hooks/useMultiOverlayRenderer.ts`
+Add `focus-visible:ring-0` or use a muted focus style so it doesn't flash bright blue when clicked:
 
-**Fix 1**: Clean up the `once` listener in the effect cleanup to prevent stale closures.
-
-**Fix 2**: After adding a new image source/layer, call `map.triggerRepaint()` to ensure the map redraws.
-
-**Fix 3**: Add a secondary `map.on('idle')` listener that checks if any pending overlays need rendering -- this catches edge cases where the initial `addSource`/`addLayer` calls silently fail.
-
-### Specific code changes in the sync effect (~line 315):
-
-```typescript
-useEffect(() => {
-    if (!map) return;
-    
-    const setupLayers = () => {
-      const allOverlayIds = new Set(overlays.map(o => o.id));
-      const visibleOverlays = overlays.filter(o => 
-        !hiddenOverlayIds.has(o.id) && o.imageUrl
-      );
-      const visibleIds = new Set(visibleOverlays.map(o => o.id));
-      
-      renderedOverlayIdsRef.current.forEach(id => {
-        if (!allOverlayIds.has(id) || !visibleIds.has(id)) {
-          removeOverlayLayer(id);
-        }
-      });
-      
-      visibleOverlays.forEach(overlay => {
-        updateOverlayLayer(overlay);
-      });
-      
-      // Force repaint after layer changes
-      map.triggerRepaint();
-    };
-    
-    if (map.isStyleLoaded()) {
-      setupLayers();
-    } else {
-      map.once('style.load', setupLayers);
-    }
-    
-    const handleStyleLoad = () => {
-      renderedOverlayIdsRef.current.clear();
-      setupLayers();
-    };
-    map.on('style.load', handleStyleLoad);
-
-    return () => {
-      map.off('style.load', handleStyleLoad);
-      // Also remove the once listener to prevent stale closure
-      map.off('style.load', setupLayers);
-    };
-  }, [map, overlays, hiddenOverlayIds, updateOverlayLayer, removeOverlayLayer]);
+```tsx
+<Button
+  variant="outline"
+  size="sm"
+  className="h-9 justify-start gap-2 hover:border-primary hover:text-primary focus-visible:ring-1 focus-visible:ring-primary/50"
+  onClick={handleCreateOverlay}
+  disabled={featureDrawing.isDrawing}
+>
 ```
 
-### In `updateOverlayLayer` callback:
-
-Add `map.triggerRepaint()` after adding a new source+layer:
-
-```typescript
-map.addLayer({
-  id: layerId,
-  type: 'raster',
-  source: sourceId,
-  paint: {
-    'raster-opacity': overlay.opacity,
-    'raster-fade-duration': 0,
-  },
-});
-
-renderedOverlayIdsRef.current.add(overlay.id);
-map.triggerRepaint();  // <-- Ensure immediate visual update
-```
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/hooks/useMultiOverlayRenderer.ts` | Fix cleanup, add triggerRepaint after layer add |
+This removes the harsh default blue focus ring and replaces it with a subtle primary-colored ring that matches the dark UI theme.
 
 ## Impact
-
-- Fixes regression where uploaded images don't appear on the map
-- No changes to data model or UI components
-- Defensive fix that handles edge cases in Mapbox rendering pipeline
-
+- Visual-only change, no logic changes
+- Single line edit in `TrackEditor.tsx`
