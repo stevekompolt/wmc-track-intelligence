@@ -261,7 +261,7 @@ export function useMultiOverlayRenderer({
     if (!map || !editingOverlayId) return;
     
     const editingOverlay = overlays.find(o => o.id === editingOverlayId);
-    if (!editingOverlay) return;
+    if (!editingOverlay || !editingOverlay.imageUrl) return;
 
     const { north, south, east, west } = editingOverlay.boundingBox;
     const hasValidBounds = north > south && east > west;

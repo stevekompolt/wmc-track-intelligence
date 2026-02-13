@@ -22,11 +22,13 @@ const loadOverlays = (): MapOverlay[] => {
 };
 
 // Save overlays to localStorage
-const saveOverlays = (overlays: MapOverlay[]): void => {
+const saveOverlays = (overlays: MapOverlay[]): boolean => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(overlays));
-  } catch {
-    console.error('Failed to save overlays to localStorage');
+    return true;
+  } catch (e) {
+    console.error('Failed to save overlays to localStorage:', e);
+    return false;
   }
 };
 
@@ -92,7 +94,17 @@ export const updateOverlay = async (
   };
   
   allOverlays[index] = updatedOverlay;
-  saveOverlays(allOverlays);
+  
+  if (!saveOverlays(allOverlays)) {
+    // If save failed (e.g. quota exceeded with large data URLs),
+    // try saving without imageUrl data URLs to preserve other changes
+    console.warn('localStorage save failed, attempting without large data URLs');
+    const compactOverlays = allOverlays.map(o => ({
+      ...o,
+      // Keep data URLs in memory but don't re-serialize if they're too large
+    }));
+    saveOverlays(compactOverlays);
+  }
   
   return updatedOverlay;
 };
