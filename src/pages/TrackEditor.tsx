@@ -407,7 +407,7 @@ export default function TrackEditor() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 justify-start gap-2 hover:border-primary hover:text-primary"
+                        className="h-9 justify-start gap-2 hover:border-primary hover:text-primary focus-visible:ring-1 focus-visible:ring-primary/50"
                         onClick={handleCreateOverlay}
                         disabled={featureDrawing.isDrawing}
                       >
