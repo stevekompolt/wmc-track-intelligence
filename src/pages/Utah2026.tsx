@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Play, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -6,6 +6,7 @@ const CESIUM_URL =
   "https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1&play";
 
 export default function Utah2026() {
+  const cacheBuster = useMemo(() => Date.now(), []);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [started, setStarted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -81,7 +82,7 @@ export default function Utah2026() {
           title="WMC Utah 2026"
           width="100%"
           height="100%"
-          src={`${CESIUM_URL}&t=${Date.now()}`}
+          src={`${CESIUM_URL}&t=${cacheBuster}`}
           frameBorder="0"
           allow="fullscreen"
           allowFullScreen
