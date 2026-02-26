@@ -1,59 +1,37 @@
 
 
-# Add 2D/3D Toggle: Mapbox ↔ CesiumJS
+# Fix Camera Handoff Between 2D/3D Toggle
 
-## Overview
-Add a native CesiumJS viewer alongside Mapbox with a toggle button. Features, overlays, and viewpoints work in both engines. The Cesium Ion token is stored as a constant.
+## Problem
+There is a race condition in the engine switch. The camera capture runs in a `useEffect` triggered by the `engine` state change, but by that time the previous engine's component is already unmounting and its ref is null. Additionally, CesiumMap uses a separate `cesiumRef` that is never read during the capture — `mapRef` only points to TrackMap.
 
-## Dependencies to Install
-- `cesium` — CesiumJS core library
-- `resium` — React components for Cesium (Viewer, Entity, GeoJsonDataSource, etc.)
-- `vite-plugin-cesium` — handles Cesium static assets (Workers, ThirdParty) in Vite
+## Root Cause
+1. `EngineToggle` calls `setEngine()` which triggers a re-render
+2. The `useEffect` in `SharedMapContainer` fires *after* the new engine value is set, meaning the old component is already gone
+3. CesiumMap's ref (`cesiumRef`) is never consulted when capturing camera — only `mapRef` is used
 
-## Changes
+## Fix
 
-### 1. `vite.config.ts` — Add Cesium plugin
-```ts
-import cesium from 'vite-plugin-cesium';
-// Add cesium() to plugins array
-```
+### 1. `SharedMapContainer.tsx` — Capture camera synchronously before engine switch
+- Replace the `useEffect`-based capture with a callback passed to `EngineToggle`
+- Create a `handleEngineSwitch` function that:
+  1. Reads camera from `mapRef` (if switching from Mapbox) or `cesiumRef` (if switching from Cesium)
+  2. Stores it in `savedCameraRef`
+  3. Then calls `setEngine()`
+- Pass `initialCameraState={savedCameraRef.current}` to **both** TrackMap and CesiumMap (add `initialCameraState` prop to TrackMap)
 
-### 2. `src/lib/cesiumConfig.ts` — New file
-Store the Cesium Ion token and initialize `Ion.defaultAccessToken`.
+### 2. `TrackMap.tsx` — Accept `initialCameraState` prop
+- Add optional `initialCameraState?: CameraState | null` prop
+- When provided, use it to set initial center/zoom/bearing/pitch instead of the track defaults
 
-### 3. `src/components/editor/CesiumMap.tsx` — New file
-A `resium` `<Viewer>` component with the same imperative handle interface as `TrackMap` (`flyToViewpoint`, `captureCamera`, `setCameraState`, `setInteractionsEnabled`, `getMapInstance`). Renders at the same coordinates as the selected track. Includes terrain and imagery from Cesium Ion.
+### 3. `EngineToggle.tsx` — Accept an `onToggle` callback
+- Instead of calling `setEngine` directly, call `props.onToggle()` which triggers the synchronous capture-then-switch flow in SharedMapContainer
 
-### 4. `src/hooks/useCesiumFeatureRenderer.ts` — New file
-Renders features (points, lines, polygons) and overlays as Cesium Entities via `GeoJsonDataSource`. Mirrors the logic of `useSharedFeatureRenderer` but targets the Cesium viewer. Mode-aware visibility is preserved.
+### 4. `ViewpointContext.tsx` — No changes needed
+The engine state and setEngine remain as-is; the fix is in the orchestration layer.
 
-### 5. `src/contexts/ViewpointContext.tsx` — Add engine state
-- Add `engine: 'mapbox' | 'cesium'` state and `setEngine` action
-- Expose via context so the toggle and renderers can read it
-
-### 6. `src/components/layout/SharedMapContainer.tsx` — Conditional rendering
-- Read `engine` from ViewpointContext
-- Render `<TrackMap>` when engine is `mapbox`, `<CesiumMap>` when `cesium`
-- When switching, capture current camera state from the active engine, mount the new one, and restore camera position
-- Use the appropriate feature renderer hook based on engine
-
-### 7. `src/components/layout/EngineToggle.tsx` — New file
-A small "2D / 3D" toggle button positioned on the map (top-left area). Clicking switches `engine` in context. Shows current mode.
-
-### 8. `src/pages/TrackEditor.tsx` — Update toolbar label
-Change the static "2D VIEW" text to show "2D VIEW" or "3D VIEW" based on active engine.
-
-### 9. `src/lib/cameraRenderers.ts` — Wire CesiumRenderer
-Uncomment and complete the `CesiumRenderer` methods to use real Cesium API calls (`camera.flyTo`, `camera.setView`, `camera.lookAt`).
-
-## Camera State Translation
-- Mapbox uses zoom (0-22) for "height"; Cesium uses meters. Translation: `height_m = 591657550.5 / (2 ^ zoom)`
-- Mapbox pitch is positive (0-85°); Cesium pitch is negative (0 to -90°). Translation: `cesium_pitch = -mapbox_pitch`
-- Heading/bearing map 1:1
-
-## Technical Notes
-- The persistent map architecture is maintained — only the active engine is mounted
-- Feature rendering in Cesium uses `GeoJsonDataSource` for the same GeoJSON that Mapbox uses
-- Overlay images in Cesium use `Entity` with `RectangleGraphics` matching the bounding box
-- Drawing tools (point/line/polygon) initially only work in 2D mode; the toggle disables drawing tools when in 3D and shows a tooltip explaining this
+### Files Changed
+- `src/components/layout/SharedMapContainer.tsx` — synchronous capture + pass initialCameraState to both engines
+- `src/components/layout/EngineToggle.tsx` — accept `onToggle` prop
+- `src/components/editor/TrackMap.tsx` — accept `initialCameraState` prop
 
