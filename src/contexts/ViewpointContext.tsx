@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useMemo, useRef, useCallback } from 'react';
-import { useViewpoints, useCreateViewpoint } from '@/hooks/useViewpoints';
+import React, { createContext, useContext, useMemo, useRef, useCallback, useState } from 'react';
+import { useViewpoints, useCreateViewpoint, useUpdateViewpoint, useDeleteViewpoint } from '@/hooks/useViewpoints';
 import { useCurrentMode } from '@/hooks/useCurrentMode';
 import { useTrackContext } from '@/contexts/TrackContext';
 import type { Viewpoint, CameraState, ViewpointFormData, AppMode } from '@/types/viewpoint';
@@ -23,9 +23,13 @@ interface ViewpointContextValue {
   // State
   activeViewpoint: Viewpoint | null;
   setActiveViewpoint: (viewpoint: Viewpoint | null) => void;
+  editingViewpoint: Viewpoint | null;
+  setEditingViewpoint: (viewpoint: Viewpoint | null) => void;
   
   // Actions
   saveViewpoint: (data: ViewpointFormData) => Promise<void>;
+  updateViewpoint: (id: string, data: Partial<ViewpointFormData>) => Promise<void>;
+  removeViewpoint: (id: string) => Promise<void>;
   captureCamera: () => CameraState | null;
   
   // Map ref
@@ -41,12 +45,15 @@ export function ViewpointProvider({ children }: { children: React.ReactNode }) {
   const { selectedTrack } = useTrackContext();
   const currentMode = useCurrentMode();
   const mapRef = useRef<TrackMapRef>(null);
-  const [activeViewpoint, setActiveViewpointState] = React.useState<Viewpoint | null>(null);
+  const [activeViewpoint, setActiveViewpointState] = useState<Viewpoint | null>(null);
+  const [editingViewpoint, setEditingViewpoint] = useState<Viewpoint | null>(null);
   
   // Fetch viewpoints for current venue
   const { data: viewpoints = [], isLoading, error } = useViewpoints(selectedTrack?.id);
   const createMutation = useCreateViewpoint();
-  
+  const updateMutation = useUpdateViewpoint();
+  const deleteMutation = useDeleteViewpoint();
+
   // Filter viewpoints by current mode and visibility
   const filteredViewpoints = useMemo(() => {
     return viewpoints.filter(vp => {
@@ -86,6 +93,19 @@ export function ViewpointProvider({ children }: { children: React.ReactNode }) {
     });
   }, [selectedTrack, createMutation]);
   
+  // Update an existing viewpoint
+  const handleUpdateViewpoint = useCallback(async (id: string, data: Partial<ViewpointFormData>) => {
+    await updateMutation.mutateAsync({ id, data });
+  }, [updateMutation]);
+  
+  // Delete a viewpoint
+  const removeViewpoint = useCallback(async (id: string) => {
+    await deleteMutation.mutateAsync(id);
+    if (activeViewpoint?.id === id) {
+      setActiveViewpointState(null);
+    }
+  }, [deleteMutation, activeViewpoint]);
+  
   const value: ViewpointContextValue = {
     viewpoints,
     filteredViewpoints,
@@ -93,12 +113,16 @@ export function ViewpointProvider({ children }: { children: React.ReactNode }) {
     error: error as Error | null,
     activeViewpoint,
     setActiveViewpoint,
+    editingViewpoint,
+    setEditingViewpoint,
     saveViewpoint,
+    updateViewpoint: handleUpdateViewpoint,
+    removeViewpoint,
     captureCamera,
     mapRef,
     currentMode,
   };
-  
+
   return (
     <ViewpointContext.Provider value={value}>
       {children}
