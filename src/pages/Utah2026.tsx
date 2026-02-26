@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef } from "react";
 import { Play, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -6,18 +6,12 @@ const CESIUM_URL =
   "https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1&play";
 
 export default function Utah2026() {
-  const cacheBuster = useMemo(() => Date.now(), []);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [started, setStarted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [iframeLoaded, setIframeLoaded] = useState(false);
 
   const handleStart = () => {
     setStarted(true);
-  };
-
-  const handleIframeLoad = () => {
-    setIframeLoaded(true);
     setIsPlaying(true);
     audioRef.current?.play().catch(console.error);
   };
@@ -56,16 +50,7 @@ export default function Utah2026() {
         </div>
       )}
 
-      {started && !iframeLoaded && (
-        <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black">
-          <div className="flex flex-col items-center gap-3 text-white/70">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            <p className="text-sm">Loading experience…</p>
-          </div>
-        </div>
-      )}
-
-      {started && iframeLoaded && (
+      {started && (
         <Button
           onClick={toggleAudio}
           variant="secondary"
@@ -82,12 +67,11 @@ export default function Utah2026() {
           title="WMC Utah 2026"
           width="100%"
           height="100%"
-          src={`${CESIUM_URL}&t=${cacheBuster}`}
+          src={CESIUM_URL}
           frameBorder="0"
           allow="fullscreen"
           allowFullScreen
           className="h-full w-full border-0"
-          onLoad={handleIframeLoad}
         />
       )}
     </div>
