@@ -1,36 +1,39 @@
 
 
-# Sync Cesium Slideshow + Voiceover with ?play
+# Viewpoint Management: List & Edit
 
-## Problem
-The Cesium iframe and voiceover audio require separate user interactions. We want a single "Start Experience" click to begin both simultaneously.
+## Current State
+- **ViewpointSelector** (bottom-left of map): shows icon buttons for filtered viewpoints, plus a "+" to create new ones. No way to see a full list with details or edit/delete existing viewpoints.
+- **SaveViewpointDialog**: create-only — no edit mode.
+- **useUpdateViewpoint / useDeleteViewpoint**: hooks exist but are unused in the UI.
+- **viewpointsApi.ts**: `updateViewpoint` and `deleteViewpoint` are implemented (mock).
 
-## Approach
-Don't render the iframe until the user clicks "Start Experience". On click, start the audio **and** inject the iframe with `?play` appended to the URL, so Cesium auto-starts the slideshow. This guarantees both begin at the same moment.
+## Plan
 
-## Changes
+### 1. New component: `ViewpointManagerPanel.tsx`
+A collapsible panel in the editor sidebar (similar to `CollapsibleMapItemList`) that lists all viewpoints for the selected track:
+- Each row shows: icon, name, status badge (draft/published), priority
+- Click row → flies to that viewpoint (calls `setActiveViewpoint`)
+- Edit button → opens `SaveViewpointDialog` in edit mode
+- Delete button → confirmation dialog → calls `useDeleteViewpoint`
 
-### `src/pages/Utah2026.tsx`
+### 2. Update `SaveViewpointDialog` to support edit mode
+- Accept an optional `viewpoint` prop (existing viewpoint to edit)
+- Pre-fill form fields when editing
+- On submit: call `updateViewpoint` instead of `createViewpoint`
+- Change dialog title to "Edit Viewpoint" when editing
 
-1. **Defer iframe rendering** — only render the `<iframe>` when `started === true`.
-2. **Use `?play` in the iframe URL** — append `&play` to the Cesium story URL so it auto-starts the slideshow on load.
-3. **`handleStart`** — sets `started = true`, plays audio. The iframe mounts for the first time with `?play`, so both start together.
+### 3. Wire into `ViewpointContext`
+- Expose `updateViewpoint` and `deleteViewpoint` actions from the context
+- Add an `editingViewpoint` state to track which viewpoint is being edited
 
-#### Before (simplified):
-```tsx
-// iframe always rendered
-<iframe src="https://ion.cesium.com/stories/viewer/?id=3b83c565-...&play" ... />
-```
+### 4. Add panel to editor layout
+- Add `ViewpointManagerPanel` to the editor sidebar (e.g., inside `OverlayEditorPanel` or as a sibling collapsible section)
+- Only visible in `editor` mode
 
-#### After:
-```tsx
-const CESIUM_URL = "https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1&play";
-
-// Only mount iframe after Start is clicked
-{started && (
-  <iframe src={CESIUM_URL} ... />
-)}
-```
-
-No new dependencies. No new files.
+### Files Changed
+- `src/components/viewpoints/SaveViewpointDialog.tsx` — add edit mode
+- `src/components/viewpoints/ViewpointManagerPanel.tsx` — new file, list + edit/delete
+- `src/contexts/ViewpointContext.tsx` — expose update/delete actions
+- Editor layout file (wherever the sidebar is composed) — add the panel
 
