@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Camera } from 'lucide-react';
+import { Camera, Pencil } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -22,15 +22,17 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { iconOptions, getViewpointIcon } from '@/lib/viewpointIcons';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
-import type { CameraState, IconKey, AppMode } from '@/types/viewpoint';
+import type { Viewpoint, CameraState, IconKey, AppMode } from '@/types/viewpoint';
 
 interface SaveViewpointDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  viewpoint?: Viewpoint | null;
 }
 
-export function SaveViewpointDialog({ open, onOpenChange }: SaveViewpointDialogProps) {
-  const { captureCamera, saveViewpoint } = useViewpointContext();
+export function SaveViewpointDialog({ open, onOpenChange, viewpoint }: SaveViewpointDialogProps) {
+  const { captureCamera, saveViewpoint, updateViewpoint } = useViewpointContext();
+  const isEditMode = !!viewpoint;
   
   // Form state
   const [name, setName] = useState('');
@@ -45,23 +47,44 @@ export function SaveViewpointDialog({ open, onOpenChange }: SaveViewpointDialogP
   const [capturedCamera, setCapturedCamera] = useState<CameraState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Capture camera when dialog opens
+  // Populate form when dialog opens
   useEffect(() => {
     if (open) {
-      const camera = captureCamera();
-      setCapturedCamera(camera);
-      // Reset form
-      setName('');
-      setDescription('');
-      setButtonIcon('camera');
-      setPriority(10);
-      setStatus('published');
-      setVisibleToFans(true);
-      setVisibleToMedia(true);
-      setVisibleToOps(true);
-      setModes(['editor', 'ops', 'media', 'fan']);
+      if (viewpoint) {
+        // Edit mode — pre-fill from existing viewpoint
+        setName(viewpoint.name);
+        setDescription(viewpoint.description || '');
+        setButtonIcon(viewpoint.buttonIcon);
+        setPriority(viewpoint.priority);
+        setStatus(viewpoint.status);
+        setVisibleToFans(viewpoint.visibleToFans);
+        setVisibleToMedia(viewpoint.visibleToMedia);
+        setVisibleToOps(viewpoint.visibleToOps);
+        setModes(viewpoint.modes.map(m => m.mode));
+        setCapturedCamera({
+          latitude: viewpoint.latitude,
+          longitude: viewpoint.longitude,
+          height: viewpoint.height,
+          heading: viewpoint.heading,
+          pitch: viewpoint.pitch,
+          roll: viewpoint.roll,
+        });
+      } else {
+        // Create mode — capture current camera and reset form
+        const camera = captureCamera();
+        setCapturedCamera(camera);
+        setName('');
+        setDescription('');
+        setButtonIcon('camera');
+        setPriority(10);
+        setStatus('published');
+        setVisibleToFans(true);
+        setVisibleToMedia(true);
+        setVisibleToOps(true);
+        setModes(['editor', 'ops', 'media', 'fan']);
+      }
     }
-  }, [open, captureCamera]);
+  }, [open, viewpoint, captureCamera]);
   
   const toggleMode = (mode: AppMode) => {
     setModes(prev => 
@@ -71,13 +94,18 @@ export function SaveViewpointDialog({ open, onOpenChange }: SaveViewpointDialogP
     );
   };
   
+  const handleRecapture = () => {
+    const camera = captureCamera();
+    setCapturedCamera(camera);
+  };
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!capturedCamera || !name.trim() || modes.length === 0) return;
     
     setIsSubmitting(true);
     try {
-      await saveViewpoint({
+      const formData = {
         name: name.trim(),
         description: description.trim() || undefined,
         buttonIcon,
@@ -88,7 +116,13 @@ export function SaveViewpointDialog({ open, onOpenChange }: SaveViewpointDialogP
         visibleToOps,
         modes,
         camera: capturedCamera,
-      });
+      };
+      
+      if (isEditMode && viewpoint) {
+        await updateViewpoint(viewpoint.id, formData);
+      } else {
+        await saveViewpoint(formData);
+      }
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to save viewpoint:', error);
@@ -104,31 +138,43 @@ export function SaveViewpointDialog({ open, onOpenChange }: SaveViewpointDialogP
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-display">
-            <Camera className="h-5 w-5 text-primary" />
-            Save Viewpoint
+            {isEditMode ? (
+              <Pencil className="h-5 w-5 text-primary" />
+            ) : (
+              <Camera className="h-5 w-5 text-primary" />
+            )}
+            {isEditMode ? 'Edit Viewpoint' : 'Save Viewpoint'}
           </DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Camera preview */}
           {capturedCamera && (
-            <div className="p-3 bg-secondary/50 rounded-md font-mono text-xs space-y-1">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Lat/Lng:</span>
-                <span>{capturedCamera.latitude.toFixed(4)}, {capturedCamera.longitude.toFixed(4)}</span>
+            <div className="space-y-2">
+              <div className="p-3 bg-secondary/50 rounded-md font-mono text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Lat/Lng:</span>
+                  <span>{capturedCamera.latitude.toFixed(4)}, {capturedCamera.longitude.toFixed(4)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Zoom:</span>
+                  <span>{capturedCamera.height.toFixed(1)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Heading:</span>
+                  <span>{capturedCamera.heading.toFixed(0)}°</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Pitch:</span>
+                  <span>{capturedCamera.pitch.toFixed(0)}°</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Zoom:</span>
-                <span>{capturedCamera.height.toFixed(1)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Heading:</span>
-                <span>{capturedCamera.heading.toFixed(0)}°</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Pitch:</span>
-                <span>{capturedCamera.pitch.toFixed(0)}°</span>
-              </div>
+              {isEditMode && (
+                <Button type="button" variant="outline" size="sm" onClick={handleRecapture} className="w-full">
+                  <Camera className="h-3 w-3 mr-1" />
+                  Recapture Current Camera
+                </Button>
+              )}
             </div>
           )}
           
@@ -272,7 +318,7 @@ export function SaveViewpointDialog({ open, onOpenChange }: SaveViewpointDialogP
               type="submit" 
               disabled={!name.trim() || modes.length === 0 || !capturedCamera || isSubmitting}
             >
-              {isSubmitting ? 'Saving...' : 'Save Viewpoint'}
+              {isSubmitting ? 'Saving...' : isEditMode ? 'Update Viewpoint' : 'Save Viewpoint'}
             </Button>
           </DialogFooter>
         </form>

@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog';
 import { OverlayEditorPanel } from '@/components/editor/OverlayEditorPanel';
+import { ViewpointManagerPanel } from '@/components/viewpoints/ViewpointManagerPanel';
 import { FeatureInspector } from '@/components/editor/FeatureInspector';
 import { CollapsibleMapItemList } from '@/components/editor/CollapsibleMapItemList';
 import { DetectTrackDialog } from '@/components/editor/DetectTrackDialog';
@@ -46,7 +47,7 @@ const DRAWING_INSTRUCTIONS: Record<string, { icon: React.ReactNode; label: strin
 
 export default function TrackEditor() {
   const { selectedTrack } = useTrackContext();
-  const { mapRef } = useViewpointContext();
+  const { mapRef, editingViewpoint, setEditingViewpoint } = useViewpointContext();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
   const [editingGeometryFeatureId, setEditingGeometryFeatureId] = useState<string | null>(null);
@@ -475,6 +476,9 @@ export default function TrackEditor() {
           onDeleteItem={handleDeleteItem}
         />
         
+        {/* Viewpoints Manager */}
+        <ViewpointManagerPanel />
+        
         {/* Dynamic Inspector - shows Feature or Overlay inspector based on selection */}
         <div className="p-3 border-b border-border">
           <h2 className="font-display text-sm font-semibold tracking-wider">
@@ -581,10 +585,16 @@ export default function TrackEditor() {
         </div>
       </div>
       
-      {/* Save Viewpoint Dialog */}
+      {/* Save/Edit Viewpoint Dialog */}
       <SaveViewpointDialog 
-        open={saveDialogOpen} 
-        onOpenChange={setSaveDialogOpen} 
+        open={saveDialogOpen || !!editingViewpoint} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setSaveDialogOpen(false);
+            setEditingViewpoint(null);
+          }
+        }}
+        viewpoint={editingViewpoint}
       />
       
       {/* Detect Track Dialog */}
