@@ -1,24 +1,36 @@
 
 
-# Welcome Dialog for Utah 2026 Page
+# Sync Cesium Slideshow + Voiceover with ?play
 
 ## Problem
-Two separate clicks are needed: one for Cesium's slideshow and one for the audio unmute button. The audio button may also be hard to notice.
+The Cesium iframe and voiceover audio require separate user interactions. We want a single "Start Experience" click to begin both simultaneously.
 
 ## Approach
-Add a full-screen welcome overlay/dialog that appears when the page loads. When the user clicks "Start Experience", the dialog dismisses and the audio begins playing immediately. Since the Cesium iframe is cross-origin, we cannot programmatically start its slideshow -- but by removing the overlay, the iframe becomes interactive and the user can click Cesium's own play button. The audio will already be playing by then.
+Don't render the iframe until the user clicks "Start Experience". On click, start the audio **and** inject the iframe with `?play` appended to the URL, so Cesium auto-starts the slideshow. This guarantees both begin at the same moment.
 
 ## Changes
 
 ### `src/pages/Utah2026.tsx`
-- Add a `started` state (default `false`) that controls a full-screen overlay.
-- On load, show a centered overlay with a title ("WMC Utah 2026") and a prominent "Start Experience" button.
-- When clicked: set `started = true`, call `audioRef.current.play()`.
-- Hide the mute/unmute toggle until `started` is true (no point showing it before audio begins).
-- The overlay uses a high z-index and covers the iframe, so the user's first interaction is the Start button.
 
-### UI Design
-- Dark semi-transparent backdrop over the iframe.
-- Centered card with the title, a brief subtitle ("Click to begin the narrated tour"), and a large play button.
-- Uses existing `Button` component, no new dependencies.
+1. **Defer iframe rendering** — only render the `<iframe>` when `started === true`.
+2. **Use `?play` in the iframe URL** — append `&play` to the Cesium story URL so it auto-starts the slideshow on load.
+3. **`handleStart`** — sets `started = true`, plays audio. The iframe mounts for the first time with `?play`, so both start together.
+
+#### Before (simplified):
+```tsx
+// iframe always rendered
+<iframe src="https://ion.cesium.com/stories/viewer/?id=3b83c565-...&play" ... />
+```
+
+#### After:
+```tsx
+const CESIUM_URL = "https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1&play";
+
+// Only mount iframe after Start is clicked
+{started && (
+  <iframe src={CESIUM_URL} ... />
+)}
+```
+
+No new dependencies. No new files.
 
