@@ -18,6 +18,7 @@ import MediaIntelligence from "./pages/MediaIntelligence";
 import FanExperience from "./pages/FanExperience";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import Utah2026 from "./pages/Utah2026";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ const App = () => (
               }
             >
               <Route path="/" element={<Dashboard />} />
+              <Route path="/utah-2026" element={<Utah2026 />} />
               <Route
                 path="/editor"
                 element={
