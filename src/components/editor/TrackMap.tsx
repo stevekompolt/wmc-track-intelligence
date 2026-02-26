@@ -31,6 +31,7 @@ interface TrackMapProps {
   latitude?: number;
   longitude?: number;
   zoom?: number;
+  initialCameraState?: CameraState | null;
 }
 
 // Imperative handle interface
@@ -43,7 +44,7 @@ export interface TrackMapHandle {
 }
 
 export const TrackMap = forwardRef<TrackMapHandle, TrackMapProps>(
-  function TrackMap({ trackName, latitude, longitude, zoom }, ref) {
+  function TrackMap({ trackName, latitude, longitude, zoom, initialCameraState }, ref) {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
     const [currentStyle, setCurrentStyle] = useState('satellite-streets');
@@ -114,10 +115,13 @@ export const TrackMap = forwardRef<TrackMapHandle, TrackMapProps>(
 
       mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
-      // Use provided coordinates or defaults
-      const initialCenter: [number, number] = 
-        latitude && longitude ? [longitude, latitude] : DEFAULT_CENTER;
-      const initialZoom = zoom || DEFAULT_ZOOM;
+      // Use initialCameraState if provided (from engine switch), else track defaults
+      const initialCenter: [number, number] = initialCameraState
+        ? [initialCameraState.longitude, initialCameraState.latitude]
+        : latitude && longitude ? [longitude, latitude] : DEFAULT_CENTER;
+      const initialZoom = initialCameraState?.height ?? zoom ?? DEFAULT_ZOOM;
+      const initialPitch = initialCameraState?.pitch ?? 45;
+      const initialBearing = initialCameraState?.heading ?? 0;
 
       const initialStyleUrl = MAP_STYLES.find(s => s.id === currentStyle)?.url || MAP_STYLES[4].url;
 
@@ -126,8 +130,8 @@ export const TrackMap = forwardRef<TrackMapHandle, TrackMapProps>(
         style: initialStyleUrl,
         center: initialCenter,
         zoom: initialZoom,
-        pitch: 45,
-        bearing: 0,
+        pitch: initialPitch,
+        bearing: initialBearing,
       });
 
       map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');

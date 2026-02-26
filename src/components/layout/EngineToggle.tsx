@@ -1,12 +1,25 @@
 import { Box, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useViewpointContext } from '@/contexts/ViewpointContext';
+import { useViewpointContext, type MapEngine } from '@/contexts/ViewpointContext';
 
-export function EngineToggle() {
+interface EngineToggleProps {
+  onToggle?: (newEngine: MapEngine) => void;
+}
+
+export function EngineToggle({ onToggle }: EngineToggleProps) {
   const { engine, setEngine } = useViewpointContext();
 
   const is3D = engine === 'cesium';
+
+  const handleClick = () => {
+    const newEngine: MapEngine = is3D ? 'mapbox' : 'cesium';
+    if (onToggle) {
+      onToggle(newEngine);
+    } else {
+      setEngine(newEngine);
+    }
+  };
 
   return (
     <div className="absolute top-14 left-3 z-10">
@@ -16,7 +29,7 @@ export function EngineToggle() {
             variant="secondary"
             size="sm"
             className="bg-card/90 backdrop-blur border border-border hover:bg-card gap-1.5 px-3 font-mono text-xs"
-            onClick={() => setEngine(is3D ? 'mapbox' : 'cesium')}
+            onClick={handleClick}
           >
             {is3D ? (
               <>
