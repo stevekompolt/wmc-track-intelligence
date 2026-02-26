@@ -1,12 +1,18 @@
 
 
-## Fix: Cache-busted Cesium Story URL
+## Fix Audio-Cesium Sync Delay
 
-**File:** `src/pages/Utah2026.tsx`
+**Problem:** Audio plays instantly on click, but the Cesium iframe takes seconds to load, causing the voiceover to be out of sync with the visuals.
 
-Append a cache-busting timestamp to the iframe `src` so the browser always fetches the latest version of the story from Cesium Ion.
+**Solution:** Delay the audio until the iframe signals it has loaded, using the iframe's `onLoad` event.
 
-Change the iframe `src` from the static `CESIUM_URL` to `{CESIUM_URL}&t=${Date.now()}` so each session loads a fresh copy.
+### File: `src/pages/Utah2026.tsx`
 
-**Single-line change** in the iframe element's `src` attribute.
+1. Change `handleStart` to only set `started` (mount the iframe) but **not** play audio yet.
+2. Add an `onLoad` handler to the iframe that triggers `audioRef.current.play()` and sets `isPlaying`.
+3. Optionally show a "Loading..." indicator over the iframe while it loads.
+
+### Tradeoff
+
+The iframe `onLoad` fires when the Cesium viewer page has loaded, but the story's 3D scene may still need a moment to initialize after that. This gets the sync much closer but may not be frame-perfect. There's no cross-origin API to detect exactly when the Cesium story starts animating.
 
