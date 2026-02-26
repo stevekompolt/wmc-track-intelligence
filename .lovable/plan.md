@@ -1,38 +1,24 @@
 
 
-# Sync Audio + Cesium Story Start
+# Welcome Dialog for Utah 2026 Page
 
 ## Problem
-Currently the iframe with `&play=1` loads and starts playing immediately in the background, even before the user clicks "Start Experience". The audio and slideshow are out of sync.
+Two separate clicks are needed: one for Cesium's slideshow and one for the audio unmute button. The audio button may also be hard to notice.
 
 ## Approach
-Don't render the iframe until the user clicks "Start Experience". When clicked, start the audio AND set the iframe src dynamically. This ensures both begin at the same moment.
+Add a full-screen welcome overlay/dialog that appears when the page loads. When the user clicks "Start Experience", the dialog dismisses and the audio begins playing immediately. Since the Cesium iframe is cross-origin, we cannot programmatically start its slideshow -- but by removing the overlay, the iframe becomes interactive and the user can click Cesium's own play button. The audio will already be playing by then.
 
 ## Changes
 
 ### `src/pages/Utah2026.tsx`
-- Only render the iframe when `started` is `true`.
-- Before `started`, show a placeholder (black background) behind the overlay.
-- In `handleStart`: set `started = true`, play audio. The iframe mounts with `&play=1` at that moment, so both start together.
+- Add a `started` state (default `false`) that controls a full-screen overlay.
+- On load, show a centered overlay with a title ("WMC Utah 2026") and a prominent "Start Experience" button.
+- When clicked: set `started = true`, call `audioRef.current.play()`.
+- Hide the mute/unmute toggle until `started` is true (no point showing it before audio begins).
+- The overlay uses a high z-index and covers the iframe, so the user's first interaction is the Start button.
 
-```tsx
-// Before started: no iframe, just black bg
-// After started: iframe renders with &play=1
-
-const handleStart = () => {
-  setStarted(true);
-  setIsPlaying(true);
-  audioRef.current?.play().catch(console.error);
-};
-
-// In JSX:
-{started && (
-  <iframe
-    src="https://ion.cesium.com/stories/viewer/?id=...&play=1"
-    ...
-  />
-)}
-```
-
-No new dependencies. Single file change.
+### UI Design
+- Dark semi-transparent backdrop over the iframe.
+- Centered card with the title, a brief subtitle ("Click to begin the narrated tour"), and a large play button.
+- Uses existing `Button` component, no new dependencies.
 

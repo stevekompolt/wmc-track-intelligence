@@ -30,9 +30,8 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* Public routes */}
+            {/* Public route */}
             <Route path="/login" element={<Login />} />
-            <Route path="/utah-2026" element={<Utah2026 />} />
 
             {/* Protected routes with app layout */}
             <Route
@@ -51,6 +50,7 @@ const App = () => (
               }
             >
               <Route path="/" element={<Dashboard />} />
+              <Route path="/utah-2026" element={<Utah2026 />} />
               <Route
                 path="/editor"
                 element={
