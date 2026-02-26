@@ -27,7 +27,7 @@ export default function Utah2026() {
   const handleEnded = () => setIsPlaying(false);
 
   return (
-    <div className="h-full w-full relative bg-black">
+    <div className="h-screen w-full relative bg-black">
       <audio
         ref={audioRef}
         src="/audio/utah2026-voiceover.mp3"
