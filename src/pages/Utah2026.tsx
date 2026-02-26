@@ -63,7 +63,7 @@ export default function Utah2026() {
         title="WMC Utah 2026"
         width="100%"
         height="100%"
-        src="https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1"
+        src="https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1&play=1"
         frameBorder="0"
         allow="fullscreen"
         allowFullScreen
