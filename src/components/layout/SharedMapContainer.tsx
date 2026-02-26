@@ -1,42 +1,80 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Map } from 'lucide-react';
 import { TrackMap, TrackMapHandle } from '@/components/editor/TrackMap';
+import { CesiumMap, CesiumMapHandle } from '@/components/editor/CesiumMap';
 import { ViewpointSelector } from '@/components/viewpoints/ViewpointSelector';
 import { SaveViewpointDialog } from '@/components/viewpoints/SaveViewpointDialog';
+import { EngineToggle } from '@/components/layout/EngineToggle';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
 import { useFeatureContext } from '@/contexts/FeatureContext';
 import { useOverlayContext } from '@/contexts/OverlayContext';
 import { useSharedFeatureRenderer } from '@/hooks/useSharedFeatureRenderer';
+import { useCesiumFeatureRenderer } from '@/hooks/useCesiumFeatureRenderer';
+import type { CameraState } from '@/types/viewpoint';
+import type { Viewer } from 'cesium';
 import mapboxgl from 'mapbox-gl';
 
 export function SharedMapContainer() {
   const { selectedTrack } = useTrackContext();
-  const { mapRef } = useViewpointContext();
+  const { mapRef, engine } = useViewpointContext();
   const { visibleFeatures, currentMode } = useFeatureContext();
   const { visibleOverlays } = useOverlayContext();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
+  const [cesiumViewer, setCesiumViewer] = useState<Viewer | null>(null);
 
-  // Get map instance when available
+  // Camera state to preserve when switching engines
+  const savedCameraRef = useRef<CameraState | null>(null);
+  const cesiumRef = useRef<CesiumMapHandle>(null);
+
+  // Capture camera before engine switch
+  const prevEngineRef = useRef(engine);
   useEffect(() => {
-    const checkMapInstance = () => {
-      const instance = mapRef.current?.getMapInstance?.() as mapboxgl.Map | null;
-      if (instance) {
-        setMapInstance(instance);
-      }
-    };
-    
-    // Check immediately and after a delay
-    checkMapInstance();
-    const timeout = setTimeout(checkMapInstance, 1000);
-    return () => clearTimeout(timeout);
-  }, [mapRef, selectedTrack]);
+    if (prevEngineRef.current !== engine) {
+      // Capture from the previous engine
+      const cam = mapRef.current?.captureCamera?.();
+      if (cam) savedCameraRef.current = cam;
+      prevEngineRef.current = engine;
+    }
+  }, [engine, mapRef]);
 
-  // Render features and overlays with mode-aware visibility
+  // Get Mapbox instance
+  useEffect(() => {
+    if (engine !== 'mapbox') { setMapInstance(null); return; }
+    const check = () => {
+      const instance = mapRef.current?.getMapInstance?.() as mapboxgl.Map | null;
+      if (instance) setMapInstance(instance);
+    };
+    check();
+    const t = setTimeout(check, 1000);
+    return () => clearTimeout(t);
+  }, [mapRef, selectedTrack, engine]);
+
+  // Get Cesium viewer instance
+  useEffect(() => {
+    if (engine !== 'cesium') { setCesiumViewer(null); return; }
+    const check = () => {
+      const v = cesiumRef.current?.getViewer?.() as Viewer | null;
+      if (v) setCesiumViewer(v);
+    };
+    check();
+    const t = setTimeout(check, 1000);
+    return () => clearTimeout(t);
+  }, [engine, selectedTrack]);
+
+  // Render features via Mapbox
   useSharedFeatureRenderer({
-    map: mapInstance,
+    map: engine === 'mapbox' ? mapInstance : null,
+    features: visibleFeatures,
+    overlays: visibleOverlays,
+    currentMode,
+  });
+
+  // Render features via Cesium
+  useCesiumFeatureRenderer({
+    viewer: engine === 'cesium' ? cesiumViewer : null,
     features: visibleFeatures,
     overlays: visibleOverlays,
     currentMode,
@@ -62,13 +100,27 @@ export function SharedMapContainer() {
 
   return (
     <div className="relative w-full h-full">
-      <TrackMap
-        ref={mapRef as React.RefObject<TrackMapHandle>}
-        trackName={selectedTrack.name}
-        latitude={selectedTrack.latitude}
-        longitude={selectedTrack.longitude}
-        zoom={selectedTrack.zoom}
-      />
+      {engine === 'mapbox' ? (
+        <TrackMap
+          ref={mapRef as React.RefObject<TrackMapHandle>}
+          trackName={selectedTrack.name}
+          latitude={selectedTrack.latitude}
+          longitude={selectedTrack.longitude}
+          zoom={selectedTrack.zoom}
+        />
+      ) : (
+        <CesiumMap
+          ref={cesiumRef}
+          trackName={selectedTrack.name}
+          latitude={selectedTrack.latitude}
+          longitude={selectedTrack.longitude}
+          zoom={selectedTrack.zoom}
+          initialCameraState={savedCameraRef.current}
+        />
+      )}
+
+      {/* Engine toggle */}
+      <EngineToggle />
       
       {/* Viewpoint selector - bottom left */}
       <ViewpointSelector onAddClick={() => setSaveDialogOpen(true)} />

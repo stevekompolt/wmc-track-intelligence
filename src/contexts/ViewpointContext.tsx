@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useRef, useCallback, useState } from 'react';
+import React, { createContext, useContext, useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import { useViewpoints, useCreateViewpoint, useUpdateViewpoint, useDeleteViewpoint } from '@/hooks/useViewpoints';
 import { useCurrentMode } from '@/hooks/useCurrentMode';
 import { useTrackContext } from '@/contexts/TrackContext';
@@ -13,6 +13,8 @@ export interface TrackMapRef {
   getMapInstance?: () => unknown;
 }
 
+export type MapEngine = 'mapbox' | 'cesium';
+
 interface ViewpointContextValue {
   // Data
   viewpoints: Viewpoint[];
@@ -26,13 +28,17 @@ interface ViewpointContextValue {
   editingViewpoint: Viewpoint | null;
   setEditingViewpoint: (viewpoint: Viewpoint | null) => void;
   
+  // Engine
+  engine: MapEngine;
+  setEngine: (engine: MapEngine) => void;
+  
   // Actions
   saveViewpoint: (data: ViewpointFormData) => Promise<void>;
   updateViewpoint: (id: string, data: Partial<ViewpointFormData>) => Promise<void>;
   removeViewpoint: (id: string) => Promise<void>;
   captureCamera: () => CameraState | null;
   
-  // Map ref
+  // Map ref (works for both engines via same interface)
   mapRef: React.RefObject<TrackMapRef>;
   
   // Current mode
@@ -47,6 +53,7 @@ export function ViewpointProvider({ children }: { children: React.ReactNode }) {
   const mapRef = useRef<TrackMapRef>(null);
   const [activeViewpoint, setActiveViewpointState] = useState<Viewpoint | null>(null);
   const [editingViewpoint, setEditingViewpoint] = useState<Viewpoint | null>(null);
+  const [engine, setEngine] = useState<MapEngine>('mapbox');
   
   // Fetch viewpoints for current venue
   const { data: viewpoints = [], isLoading, error } = useViewpoints(selectedTrack?.id);
@@ -115,6 +122,8 @@ export function ViewpointProvider({ children }: { children: React.ReactNode }) {
     setActiveViewpoint,
     editingViewpoint,
     setEditingViewpoint,
+    engine,
+    setEngine,
     saveViewpoint,
     updateViewpoint: handleUpdateViewpoint,
     removeViewpoint,
