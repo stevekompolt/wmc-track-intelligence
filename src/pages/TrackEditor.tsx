@@ -11,6 +11,7 @@ import { CollapsibleMapItemList } from '@/components/editor/CollapsibleMapItemLi
 import { DetectTrackDialog } from '@/components/editor/DetectTrackDialog';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useViewpointContext } from '@/contexts/ViewpointContext';
+import type { MapEngine } from '@/contexts/ViewpointContext';
 import { useFeatureContext } from '@/contexts/FeatureContext';
 import { useOverlayContext } from '@/contexts/OverlayContext';
 import { useMultiOverlayRenderer } from '@/hooks/useMultiOverlayRenderer';
@@ -47,7 +48,7 @@ const DRAWING_INSTRUCTIONS: Record<string, { icon: React.ReactNode; label: strin
 
 export default function TrackEditor() {
   const { selectedTrack } = useTrackContext();
-  const { mapRef, editingViewpoint, setEditingViewpoint } = useViewpointContext();
+  const { mapRef, editingViewpoint, setEditingViewpoint, engine } = useViewpointContext();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
   const [editingGeometryFeatureId, setEditingGeometryFeatureId] = useState<string | null>(null);
@@ -330,7 +331,7 @@ export default function TrackEditor() {
               <span className="text-xs font-mono text-muted-foreground">SELECT MODE</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-muted-foreground">2D VIEW</span>
+              <span className="text-xs font-mono text-muted-foreground">{engine === 'cesium' ? '3D VIEW' : '2D VIEW'}</span>
             </div>
           </>
         )}
