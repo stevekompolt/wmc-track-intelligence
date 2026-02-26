@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Map } from 'lucide-react';
 import { TrackMap, TrackMapHandle } from '@/components/editor/TrackMap';
@@ -18,7 +18,8 @@ import mapboxgl from 'mapbox-gl';
 
 export function SharedMapContainer() {
   const { selectedTrack } = useTrackContext();
-  const { mapRef, engine } = useViewpointContext();
+  const { mapRef, engine, setEngine } = useViewpointContext();
+  type MapEngine = typeof engine;
   const { visibleFeatures, currentMode } = useFeatureContext();
   const { visibleOverlays } = useOverlayContext();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -29,16 +30,18 @@ export function SharedMapContainer() {
   const savedCameraRef = useRef<CameraState | null>(null);
   const cesiumRef = useRef<CesiumMapHandle>(null);
 
-  // Capture camera before engine switch
-  const prevEngineRef = useRef(engine);
-  useEffect(() => {
-    if (prevEngineRef.current !== engine) {
-      // Capture from the previous engine
+  // Synchronous capture-then-switch to avoid race condition
+  const handleEngineSwitch = useCallback((newEngine: MapEngine) => {
+    // Capture from the CURRENT engine before unmounting it
+    if (engine === 'mapbox') {
       const cam = mapRef.current?.captureCamera?.();
       if (cam) savedCameraRef.current = cam;
-      prevEngineRef.current = engine;
+    } else {
+      const cam = cesiumRef.current?.captureCamera?.();
+      if (cam) savedCameraRef.current = cam;
     }
-  }, [engine, mapRef]);
+    setEngine(newEngine);
+  }, [engine, mapRef, setEngine]);
 
   // Get Mapbox instance
   useEffect(() => {
@@ -107,6 +110,7 @@ export function SharedMapContainer() {
           latitude={selectedTrack.latitude}
           longitude={selectedTrack.longitude}
           zoom={selectedTrack.zoom}
+          initialCameraState={savedCameraRef.current}
         />
       ) : (
         <CesiumMap
@@ -120,7 +124,7 @@ export function SharedMapContainer() {
       )}
 
       {/* Engine toggle */}
-      <EngineToggle />
+      <EngineToggle onToggle={handleEngineSwitch} />
       
       {/* Viewpoint selector - bottom left */}
       <ViewpointSelector onAddClick={() => setSaveDialogOpen(true)} />
