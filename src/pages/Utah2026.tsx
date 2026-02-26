@@ -2,6 +2,9 @@ import { useState, useRef } from "react";
 import { Play, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const CESIUM_URL =
+  "https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1&play";
+
 export default function Utah2026() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [started, setStarted] = useState(false);
@@ -59,16 +62,18 @@ export default function Utah2026() {
         </Button>
       )}
 
-      <iframe
-        title="WMC Utah 2026"
-        width="100%"
-        height="100%"
-        src="https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1"
-        frameBorder="0"
-        allow="fullscreen"
-        allowFullScreen
-        className="h-full w-full border-0"
-      />
+      {started && (
+        <iframe
+          title="WMC Utah 2026"
+          width="100%"
+          height="100%"
+          src={CESIUM_URL}
+          frameBorder="0"
+          allow="fullscreen"
+          allowFullScreen
+          className="h-full w-full border-0"
+        />
+      )}
     </div>
   );
 }
