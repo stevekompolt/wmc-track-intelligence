@@ -1,17 +1,12 @@
 
 
-## Update Cesium Story URL
+## Fix: Cache-busted Cesium Story URL
 
 **File:** `src/pages/Utah2026.tsx`
 
-Change the `CESIUM_URL` constant from:
-```
-https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1&play
-```
-to:
-```
-https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1
-```
+Append a cache-busting timestamp to the iframe `src` so the browser always fetches the latest version of the story from Cesium Ion.
 
-Remove the `&play` suffix from the constant. The `&play` parameter will be appended dynamically when the iframe mounts (on user click), preserving the synchronized start behavior.
+Change the iframe `src` from the static `CESIUM_URL` to `{CESIUM_URL}&t=${Date.now()}` so each session loads a fresh copy.
+
+**Single-line change** in the iframe element's `src` attribute.
 
