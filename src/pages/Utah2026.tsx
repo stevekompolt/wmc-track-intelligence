@@ -1,22 +1,41 @@
-import { useEffect, useRef } from "react";
+import { useState, useRef } from "react";
+import { Volume2, VolumeX } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function Utah2026() {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  useEffect(() => {
-    // Auto-play voiceover when the page loads (iframe starts)
-    const timer = setTimeout(() => {
-      audioRef.current?.play().catch(() => {
-        // Browser may block autoplay; silent fallback
-      });
-    }, 1500); // slight delay to let the Cesium story begin loading
+  const toggleAudio = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  };
 
-    return () => clearTimeout(timer);
-  }, []);
+  const handleEnded = () => setIsPlaying(false);
 
   return (
     <div className="h-full w-full relative">
-      <audio ref={audioRef} src="/audio/utah2026-voiceover.mp3" preload="auto" />
+      <audio
+        ref={audioRef}
+        src="/audio/utah2026-voiceover.mp3"
+        preload="auto"
+        onEnded={handleEnded}
+      />
+      <Button
+        onClick={toggleAudio}
+        variant="secondary"
+        size="icon"
+        className="absolute top-4 right-4 z-50 rounded-full shadow-lg opacity-90 hover:opacity-100"
+        title={isPlaying ? "Mute voiceover" : "Play voiceover"}
+      >
+        {isPlaying ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+      </Button>
       <iframe
         title="WMC Utah 2026"
         width="100%"
