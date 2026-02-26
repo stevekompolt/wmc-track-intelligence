@@ -13,7 +13,9 @@ export default function Utah2026() {
   const handleStart = () => {
     setStarted(true);
     setIsPlaying(true);
-    audioRef.current?.play().catch(console.error);
+    setTimeout(() => {
+      audioRef.current?.play().catch(console.error);
+    }, 1000);
   };
 
   const toggleAudio = () => {
