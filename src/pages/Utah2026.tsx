@@ -9,9 +9,14 @@ export default function Utah2026() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [started, setStarted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
 
   const handleStart = () => {
     setStarted(true);
+  };
+
+  const handleIframeLoad = () => {
+    setIframeLoaded(true);
     setIsPlaying(true);
     audioRef.current?.play().catch(console.error);
   };
@@ -50,7 +55,16 @@ export default function Utah2026() {
         </div>
       )}
 
-      {started && (
+      {started && !iframeLoaded && (
+        <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black">
+          <div className="flex flex-col items-center gap-3 text-white/70">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            <p className="text-sm">Loading experience…</p>
+          </div>
+        </div>
+      )}
+
+      {started && iframeLoaded && (
         <Button
           onClick={toggleAudio}
           variant="secondary"
@@ -72,6 +86,7 @@ export default function Utah2026() {
           allow="fullscreen"
           allowFullScreen
           className="h-full w-full border-0"
+          onLoad={handleIframeLoad}
         />
       )}
     </div>
