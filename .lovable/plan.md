@@ -1,64 +1,45 @@
 
-# Fix: Deleting Map Layer Doesn't Remove Image from Map
 
-## Problem
-When deleting an overlay from the Map Layers list, the entry disappears from the list but the image remains rendered on the map.
+# Add Hidden UTAH-2026 Page
 
-## Root Cause
-In `useMultiOverlayRenderer.ts`, the `updateOverlayLayer` function only tracks an overlay in `renderedOverlayIdsRef` when it **creates** a new source (the `else` branch). If the source already exists (e.g., after a style reload or re-render), the overlay ID is never added to the tracking set. Later, when `setupLayers` tries to clean up deleted overlays, it iterates `renderedOverlayIdsRef` -- but the ID isn't there, so `removeOverlayLayer` is never called and the layer remains on the map.
+## Overview
+Add a new route `/utah-2026` that renders a full-screen Cesium Ion Story iframe. The page will not appear in the navigation menu — it's only accessible via direct URL.
 
-## Fix
+## Changes
 
-### File: `src/hooks/useMultiOverlayRenderer.ts`
+### 1. New File: `src/pages/Utah2026.tsx`
+Create a simple page component that renders the Cesium Ion iframe at full size within the layout.
 
-Two changes:
-
-1. **Track overlays in both branches of `updateOverlayLayer`**: Move `renderedOverlayIdsRef.current.add(overlay.id)` so it runs whether the source is new or already exists.
-
-2. **Add a safety net in `setupLayers`**: Instead of only checking `renderedOverlayIdsRef`, also directly query the map for any overlay sources that match the naming pattern and should be removed. This handles edge cases where the ref gets out of sync.
-
-```typescript
-// In updateOverlayLayer - move tracking OUTSIDE the if/else
-if (source) {
-  source.updateImage({ url: overlay.imageUrl, coordinates });
-} else {
-  map.addSource(sourceId, { type: 'image', url: overlay.imageUrl, coordinates });
-  map.addLayer({ ... });
-  map.triggerRepaint();
-}
-// Always track, regardless of new vs existing
-renderedOverlayIdsRef.current.add(overlay.id);
-```
-
-```typescript
-// In setupLayers - also check for orphaned layers directly on the map
-renderedOverlayIdsRef.current.forEach(id => {
-  if (!allOverlayIds.has(id) || !visibleIds.has(id)) {
-    removeOverlayLayer(id);
-  }
-});
-
-// Safety: check map directly for any orphaned overlay layers
-const style = map.getStyle();
-if (style?.sources) {
-  Object.keys(style.sources).forEach(srcId => {
-    if (srcId.startsWith('overlay-image-')) {
-      const overlayId = srcId.replace('overlay-image-', '');
-      if (!allOverlayIds.has(overlayId) || !visibleIds.has(overlayId)) {
-        removeOverlayLayer(overlayId);
-      }
-    }
-  });
+```tsx
+export default function Utah2026() {
+  return (
+    <div className="h-full w-full">
+      <iframe
+        title="WMC Utah 2026"
+        width="100%"
+        height="100%"
+        src="https://ion.cesium.com/stories/viewer/?id=3b83c565-be61-4509-b89a-b31235d7d3c1"
+        frameBorder="0"
+        allow="fullscreen"
+        allowFullScreen
+        className="h-full w-full border-0"
+      />
+    </div>
+  );
 }
 ```
 
-## Files to Modify
+### 2. Edit: `src/App.tsx`
+Add a new route inside the protected layout routes:
 
-| File | Change |
-|------|--------|
-| `src/hooks/useMultiOverlayRenderer.ts` | Fix overlay ID tracking + add orphaned layer cleanup |
+```tsx
+<Route path="/utah-2026" element={<Utah2026 />} />
+```
+
+Import the new page component. No navigation links added — the page is only reachable by typing `/utah-2026` in the URL bar.
 
 ## Impact
-- Ensures deleting an overlay from the list always removes its image from the map
-- No changes to UI components or data model
-- Defensive approach handles edge cases where tracking ref gets out of sync
+- No changes to navigation or existing pages
+- Single new page + one route registration
+- Accessible to any authenticated user
+
