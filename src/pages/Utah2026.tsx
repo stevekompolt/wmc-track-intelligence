@@ -31,7 +31,7 @@ export default function Utah2026() {
         onClick={toggleAudio}
         variant="secondary"
         size="icon"
-        className="absolute top-4 right-4 z-50 rounded-full shadow-lg opacity-90 hover:opacity-100"
+        className="absolute top-16 left-4 z-[9999] rounded-full shadow-lg opacity-90 hover:opacity-100"
         title={isPlaying ? "Mute voiceover" : "Play voiceover"}
       >
         {isPlaying ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
