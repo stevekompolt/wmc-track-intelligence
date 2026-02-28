@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Play, Volume2, VolumeX } from "lucide-react";
+import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { lookupContactByEmail, trackPortalLogin } from "@/services/portalTrackingService";
 
@@ -10,48 +10,14 @@ const CESIUM_URL =
 export default function PublicExperience() {
   const [searchParams] = useSearchParams();
   const email = searchParams.get("email");
-  const audioRef = useRef<HTMLAudioElement>(null);
   const [started, setStarted] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  useEffect(() => {
-    if (email) {
-      lookupContactByEmail(email).then((contactId) => {
-        if (contactId) trackPortalLogin(contactId);
-      });
-    }
-  }, [email]);
 
   const handleStart = () => {
     setStarted(true);
-    setIsPlaying(true);
-    setTimeout(() => {
-      audioRef.current?.play().catch(console.error);
-    }, 1000);
   };
-
-  const toggleAudio = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
-  };
-
-  const handleEnded = () => setIsPlaying(false);
 
   return (
     <div className="h-screen w-screen relative">
-      <audio
-        ref={audioRef}
-        src="/audio/utah2026-voiceover.mp3"
-        preload="auto"
-        onEnded={handleEnded}
-      />
-
       {!started && (
         <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-6 text-center">
@@ -62,18 +28,6 @@ export default function PublicExperience() {
             </Button>
           </div>
         </div>
-      )}
-
-      {started && (
-        <Button
-          onClick={toggleAudio}
-          variant="secondary"
-          size="icon"
-          className="absolute top-4 left-4 z-[9999] rounded-full shadow-lg opacity-90 hover:opacity-100"
-          title={isPlaying ? "Mute voiceover" : "Play voiceover"}
-        >
-          {isPlaying ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
-        </Button>
       )}
 
       {started && (
