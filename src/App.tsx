@@ -19,6 +19,7 @@ import FanExperience from "./pages/FanExperience";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Utah2026 from "./pages/Utah2026";
+import PublicExperience from "./pages/PublicExperience";
 
 const queryClient = new QueryClient();
 
@@ -30,8 +31,9 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* Public route */}
+            {/* Public routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/experience" element={<PublicExperience />} />
 
             {/* Protected routes with app layout */}
             <Route
