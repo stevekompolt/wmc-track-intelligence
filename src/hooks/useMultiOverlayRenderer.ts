@@ -68,12 +68,18 @@ export function useMultiOverlayRenderer({
 
   // Add/update a single overlay
   const updateOverlayLayer = useCallback((overlay: MapOverlay) => {
-    if (!map || !overlay.imageUrl) return;
+    if (!map || !overlay.imageUrl) {
+      console.warn(`[OverlayRenderer] Skipping overlay "${overlay.name}": map=${!!map}, imageUrl=${!!overlay.imageUrl} (len=${overlay.imageUrl?.length || 0})`);
+      return;
+    }
 
     const { north, south, east, west } = overlay.boundingBox;
     const hasValidBounds = north > south && east > west;
     
-    if (!hasValidBounds) return;
+    if (!hasValidBounds) {
+      console.warn(`[OverlayRenderer] Skipping overlay "${overlay.name}": invalid bounds`, overlay.boundingBox);
+      return;
+    }
 
     const sourceId = getSourceId(overlay.id);
     const layerId = getLayerId(overlay.id);
@@ -86,6 +92,7 @@ export function useMultiOverlayRenderer({
     ];
 
     const imageUrl = dataUrlToBlobUrl(overlay.imageUrl);
+    console.log(`[OverlayRenderer] Rendering overlay "${overlay.name}" — blobUrl=${imageUrl.substring(0, 60)}... bounds=`, { north, south, east, west });
     const source = map.getSource(sourceId) as mapboxgl.ImageSource;
     
     if (source) {
