@@ -1,35 +1,26 @@
 
 
-# Clone Utah 2026 as Public Page with SFDC Portal Login Tracking
+# Fix: Image Overlays Not Rendering on Map
 
-## Overview
-Create a new public page (no login required) that clones the Utah 2026 experience with a different Cesium story. It reads `?email=` from the URL, looks up the contact in SFDC, and posts a "Portal Login" record — the same pattern used in wmc-media-hub.
+## Problem
+The overlay corner markers appear correctly, confirming valid bounding boxes. However, the actual overlay image is not rendering on the map. The most likely cause is that the `imageUrl` (a base64 data URL) was lost due to localStorage quota limits. The `overlaysApi.ts` save fallback (lines 98-107) doesn't actually strip data URLs — the "compact" save is identical to the original, so the save still fails silently and on reload the image data is gone.
 
-## Changes
+## Root Cause
+When large base64 images are stored via `updateOverlay`, the `saveOverlays` call can exceed the ~5MB localStorage quota. The fallback at line 102 creates a "compact" copy but doesn't actually remove the large data URLs, so the retry also fails. On next page load, the overlay object has no `imageUrl`, so nothing renders — but the bounding box is intact, so markers still work.
 
-### 1. `src/services/portalTrackingService.ts` — New file
-Standalone service with three functions ported from wmc-media-hub:
-- `getCurrentIpAddress()` — tries ipify, ipinfo, my-ip.io, httpbin
-- `getIPLocation(ip)` — fetches country/city from ipapi.co with localStorage caching
-- `trackPortalLogin(contactId)` — creates a hidden iframe, POSTs to `https://realintelligence.com/customers/expos/00D5e000000HEcP/exhibitors/engine/w2x-engine.php` with sObj=`ri__Portal__c`, action=`WMC Intel Portal Login`, contactId, IP, city, country, login URL
-- `lookupContactByEmail(email)` — calls the existing SFDC endpoint (`specific-wmc-member-email.py`) and returns the contact ID (parses the same XML/text response format already used in AuthContext)
+## Fix Plan
 
-### 2. `src/pages/PublicExperience.tsx` — New file
-Clone of Utah2026 with these differences:
-- Reads `email` from `useSearchParams()`
-- On mount, if email is present: calls `lookupContactByEmail(email)` → if contact found, calls `trackPortalLogin(contactId)`
-- Uses a placeholder Cesium story URL (different from Utah 2026) — I'll use the same one for now and you can swap it later
-- Different title/branding (e.g. "WMC Experience")
-- Same start overlay, audio toggle, 1-second delay pattern
-- Full-screen layout with no app chrome (no sidebar, no nav)
+### 1. Add diagnostic logging to `useMultiOverlayRenderer`
+Add a `console.warn` when an overlay has valid bounds but empty/missing `imageUrl`, so missing images are immediately obvious during development.
 
-### 3. `src/App.tsx` — Add public route
-Add `/experience` as a public route (outside the ProtectedRoute wrapper, alongside `/login`):
-```tsx
-<Route path="/experience" element={<PublicExperience />} />
-```
+### 2. Fix the localStorage fallback in `overlaysApi.ts`
+In the `updateOverlay` function, when the initial `saveOverlays` fails, the fallback should actually strip large data URLs (e.g., replace base64 strings longer than 10KB with empty string) and warn the user that images won't persist across reloads. This prevents silent data loss.
 
-### Files
-- **New**: `src/services/portalTrackingService.ts`, `src/pages/PublicExperience.tsx`
-- **Edit**: `src/App.tsx` (add one public route)
+### 3. Add visual indicator in overlay list for missing images
+In the `MapItemList` or `OverlayEditorPanel`, show a warning badge/icon when an overlay's `imageUrl` is empty, prompting the user to re-upload.
+
+### Files to Edit
+- `src/services/overlaysApi.ts` — fix the fallback save to actually strip large data URLs and log a warning
+- `src/hooks/useMultiOverlayRenderer.ts` — add diagnostic logging for overlays with bounds but no image
+- `src/components/editor/OverlayEditorPanel.tsx` — add a "no image" warning indicator
 
