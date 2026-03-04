@@ -1,26 +1,43 @@
 
 
-# Fix: Image Overlays Not Rendering on Map
+# Fix: Overlay Image Not Rendering on Map
 
-## Problem
-The overlay corner markers appear correctly, confirming valid bounding boxes. However, the actual overlay image is not rendering on the map. The most likely cause is that the `imageUrl` (a base64 data URL) was lost due to localStorage quota limits. The `overlaysApi.ts` save fallback (lines 98-107) doesn't actually strip data URLs — the "compact" save is identical to the original, so the save still fails silently and on reload the image data is gone.
+## Diagnosis
 
-## Root Cause
-When large base64 images are stored via `updateOverlay`, the `saveOverlays` call can exceed the ~5MB localStorage quota. The fallback at line 102 creates a "compact" copy but doesn't actually remove the large data URLs, so the retry also fails. On next page load, the overlay object has no `imageUrl`, so nothing renders — but the bounding box is intact, so markers still work.
+The overlay image IS in memory (visible in the inspector preview as an `<img>` tag), and the bounding box is valid (corner markers render correctly). No console errors about missing imageUrl. The diagnostic warning we added doesn't fire, confirming the imageUrl exists.
 
-## Fix Plan
+The root cause is that **Mapbox GL JS struggles with very large base64 data URLs** passed directly to `map.addSource({ type: 'image', url: ... })`. While `<img>` tags handle base64 data URLs fine, Mapbox's internal image decoding pipeline can silently fail or ignore very large inline data URLs (typically > 1-2 MB).
 
-### 1. Add diagnostic logging to `useMultiOverlayRenderer`
-Add a `console.warn` when an overlay has valid bounds but empty/missing `imageUrl`, so missing images are immediately obvious during development.
+## Fix
 
-### 2. Fix the localStorage fallback in `overlaysApi.ts`
-In the `updateOverlay` function, when the initial `saveOverlays` fails, the fallback should actually strip large data URLs (e.g., replace base64 strings longer than 10KB with empty string) and warn the user that images won't persist across reloads. This prevents silent data loss.
+Convert base64 data URLs to **Blob URLs** before passing them to Mapbox's image source. Blob URLs (`blob:https://...`) are efficiently handled by Mapbox because the browser serves them as regular HTTP resources.
 
-### 3. Add visual indicator in overlay list for missing images
-In the `MapItemList` or `OverlayEditorPanel`, show a warning badge/icon when an overlay's `imageUrl` is empty, prompting the user to re-upload.
+### Changes
 
-### Files to Edit
-- `src/services/overlaysApi.ts` — fix the fallback save to actually strip large data URLs and log a warning
-- `src/hooks/useMultiOverlayRenderer.ts` — add diagnostic logging for overlays with bounds but no image
-- `src/components/editor/OverlayEditorPanel.tsx` — add a "no image" warning indicator
+**`src/hooks/useMultiOverlayRenderer.ts`**:
+- Add a helper function `dataUrlToBlobUrl(dataUrl)` that converts base64 data URLs to blob URLs
+- Maintain a `Map<string, string>` of overlay ID → blob URL for cleanup (revoking)
+- In `updateOverlayLayer`, convert `overlay.imageUrl` to a blob URL before passing to `map.addSource` / `source.updateImage`
+- On unmount, revoke all blob URLs to prevent memory leaks
+
+**`src/hooks/useSharedFeatureRenderer.ts`**:
+- Apply the same blob URL conversion in `updateOverlayLayer` for consistency in non-editor modes
+
+### Implementation Detail
+
+```ts
+function dataUrlToBlobUrl(dataUrl: string): string {
+  // Only convert data: URLs, pass through regular URLs
+  if (!dataUrl.startsWith('data:')) return dataUrl;
+  const [header, base64] = dataUrl.split(',');
+  const mime = header.match(/data:(.*?);/)?.[1] || 'image/png';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+  return URL.createObjectURL(blob);
+}
+```
+
+This is a targeted fix — only the Mapbox rendering path changes. The rest of the overlay system (storage, inspector preview, context state) continues using the original data URL.
 
