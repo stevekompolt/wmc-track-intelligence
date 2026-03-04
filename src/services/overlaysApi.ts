@@ -97,13 +97,17 @@ export const updateOverlay = async (
   
   if (!saveOverlays(allOverlays)) {
     // If save failed (e.g. quota exceeded with large data URLs),
-    // try saving without imageUrl data URLs to preserve other changes
-    console.warn('localStorage save failed, attempting without large data URLs');
+    // strip base64 data URLs > 10KB to preserve metadata
+    console.warn('localStorage save failed — stripping large base64 images to preserve overlay metadata');
     const compactOverlays = allOverlays.map(o => ({
       ...o,
-      // Keep data URLs in memory but don't re-serialize if they're too large
+      imageUrl: (o.imageUrl && o.imageUrl.length > 10000) ? '' : o.imageUrl,
     }));
-    saveOverlays(compactOverlays);
+    if (!saveOverlays(compactOverlays)) {
+      console.error('localStorage save failed even after stripping images');
+    } else {
+      console.warn('Overlay metadata saved, but large images were stripped. Re-upload images after reload.');
+    }
   }
   
   return updatedOverlay;

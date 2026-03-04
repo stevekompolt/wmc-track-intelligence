@@ -16,7 +16,8 @@ import {
   Layers,
   ChevronDown,
   Trash2,
-  ChevronRight
+  ChevronRight,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -150,10 +151,19 @@ export function OverlayEditorPanel({
   }
 
   const hasValidImage = overlay.imageUrl.length > 0;
+  const hasValidBounds = overlay.boundingBox.north > overlay.boundingBox.south && overlay.boundingBox.east > overlay.boundingBox.west;
+  const missingImage = !hasValidImage && hasValidBounds;
 
   return (
     <ScrollArea className="h-full">
       <div className="p-4 space-y-6">
+        {/* Warning: missing image with valid bounds */}
+        {missingImage && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>Image data lost (storage limit). Please re-upload.</span>
+          </div>
+        )}
         {/* Header with status */}
         <div className="flex items-center justify-between">
           <h2 className="font-display text-sm font-semibold tracking-wider">
