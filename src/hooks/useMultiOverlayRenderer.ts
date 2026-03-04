@@ -335,6 +335,7 @@ export function useMultiOverlayRenderer({
     overlays.forEach(o => console.log(`  → overlay "${o.name}" id=${o.id} imageUrl=${o.imageUrl ? `yes (${o.imageUrl.length} chars)` : 'NO'} hidden=${hiddenOverlayIds.has(o.id)}`));
     
     const setupLayers = () => {
+      console.log(`[OverlayRenderer] setupLayers() called`);
       // Get all overlay IDs currently in the data
       const allOverlayIds = new Set(overlays.map(o => o.id));
       
@@ -342,6 +343,7 @@ export function useMultiOverlayRenderer({
       const visibleOverlays = overlays.filter(o => 
         !hiddenOverlayIds.has(o.id) && o.imageUrl
       );
+      console.log(`[OverlayRenderer] visibleOverlays: ${visibleOverlays.length}`);
       const visibleIds = new Set(visibleOverlays.map(o => o.id));
       
       // Remove overlays that are either:
@@ -370,7 +372,9 @@ export function useMultiOverlayRenderer({
       map.triggerRepaint();
     };
     
-    if (map.isStyleLoaded()) {
+    const styleLoaded = map.isStyleLoaded();
+    console.log(`[OverlayRenderer] isStyleLoaded=${styleLoaded}`);
+    if (styleLoaded) {
       setupLayers();
     } else {
       map.once('style.load', setupLayers);
