@@ -326,7 +326,13 @@ export function useMultiOverlayRenderer({
 
   // Effect: Sync overlays with map
   useEffect(() => {
-    if (!map) return;
+    if (!map) {
+      console.log('[OverlayRenderer] Effect: no map yet');
+      return;
+    }
+    
+    console.log(`[OverlayRenderer] Effect running: ${overlays.length} overlays, ${hiddenOverlayIds.size} hidden`);
+    overlays.forEach(o => console.log(`  → overlay "${o.name}" id=${o.id} imageUrl=${o.imageUrl ? `yes (${o.imageUrl.length} chars)` : 'NO'} hidden=${hiddenOverlayIds.has(o.id)}`));
     
     const setupLayers = () => {
       // Get all overlay IDs currently in the data
