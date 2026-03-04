@@ -6,6 +6,7 @@ import type { VenueFeature } from '@/types/feature';
 import type { MapOverlay } from '@/types/overlay';
 import type { AppMode } from '@/types/viewpoint';
 import mapboxgl from 'mapbox-gl';
+import { dataUrlToBlobUrl } from '@/lib/blobUrl';
 
 interface UseSharedFeatureRendererOptions {
   map: mapboxgl.Map | null;
@@ -92,17 +93,18 @@ export function useSharedFeatureRenderer({
       [west, south],
     ];
 
+    const imageUrl = dataUrlToBlobUrl(overlay.imageUrl);
     const source = map.getSource(sourceId) as mapboxgl.ImageSource;
     
     if (source) {
       source.updateImage({
-        url: overlay.imageUrl,
+        url: imageUrl,
         coordinates,
       });
     } else {
       map.addSource(sourceId, {
         type: 'image',
-        url: overlay.imageUrl,
+        url: imageUrl,
         coordinates,
       });
 

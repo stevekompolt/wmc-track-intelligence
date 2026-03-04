@@ -4,6 +4,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import mapboxgl, { Marker, LngLatLike } from 'mapbox-gl';
 import type { MapOverlay, CornerHandle, BoundingBox } from '@/types/overlay';
+import { dataUrlToBlobUrl, revokeAllBlobUrls } from '@/lib/blobUrl';
 
 interface UseMultiOverlayRendererOptions {
   map: mapboxgl.Map | null;
@@ -84,17 +85,18 @@ export function useMultiOverlayRenderer({
       [west, south],
     ];
 
+    const imageUrl = dataUrlToBlobUrl(overlay.imageUrl);
     const source = map.getSource(sourceId) as mapboxgl.ImageSource;
     
     if (source) {
       source.updateImage({
-        url: overlay.imageUrl,
+        url: imageUrl,
         coordinates,
       });
     } else {
       map.addSource(sourceId, {
         type: 'image',
-        url: overlay.imageUrl,
+        url: imageUrl,
         coordinates,
       });
 
@@ -161,17 +163,18 @@ export function useMultiOverlayRenderer({
       [west, south],
     ];
 
+    const ghostImageUrl = dataUrlToBlobUrl(editingOverlay.imageUrl);
     const source = map.getSource(ghostSourceId) as mapboxgl.ImageSource;
     
     if (source) {
       source.updateImage({
-        url: editingOverlay.imageUrl,
+        url: ghostImageUrl,
         coordinates,
       });
     } else {
       map.addSource(ghostSourceId, {
         type: 'image',
-        url: editingOverlay.imageUrl,
+        url: ghostImageUrl,
         coordinates,
       });
 
@@ -409,6 +412,7 @@ export function useMultiOverlayRenderer({
     return () => {
       markersRef.current.forEach(m => m.remove());
       markersRef.current.clear();
+      revokeAllBlobUrls();
       
       // Check map is valid and style is loaded before cleanup
       if (map && map.isStyleLoaded()) {
