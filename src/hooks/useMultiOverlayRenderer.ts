@@ -342,6 +342,14 @@ export function useMultiOverlayRenderer({
         updateOverlayLayer(overlay);
       });
       
+      // Diagnostic: warn about overlays with bounds but no image
+      overlays.forEach(overlay => {
+        const { north, south, east, west } = overlay.boundingBox;
+        if (north > south && east > west && !overlay.imageUrl) {
+          console.warn(`[Overlay "${overlay.name}" (${overlay.id})]: has valid bounds but missing imageUrl — re-upload the image.`);
+        }
+      });
+      
       // Force repaint after layer changes
       map.triggerRepaint();
     };
