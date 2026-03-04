@@ -372,11 +372,12 @@ export function useMultiOverlayRenderer({
       map.triggerRepaint();
     };
     
-    const styleLoaded = map.isStyleLoaded();
-    console.log(`[OverlayRenderer] isStyleLoaded=${styleLoaded}`);
-    if (styleLoaded) {
+    // Always try to set up layers immediately — isStyleLoaded() can return false
+    // in Mapbox v3 while tiles are loading, even though the style object is ready.
+    try {
       setupLayers();
-    } else {
+    } catch (e) {
+      console.warn('[OverlayRenderer] setupLayers failed, will retry on style.load', e);
       map.once('style.load', setupLayers);
     }
     
