@@ -18,6 +18,7 @@ interface CollapsibleMapItemListProps {
   onToggleFeatureVisibility: (featureId: string) => void;
   onToggleOverlayVisibility: (overlayId: string) => void;
   onDeleteItem?: (id: string, type: 'feature' | 'overlay') => void;
+  onReorderItems?: (reorderedItems: MapItem[]) => void;
 }
 
 const FeatureTypeIcon = ({ type, color }: { type: VenueFeature['type']; color: string }) => {
