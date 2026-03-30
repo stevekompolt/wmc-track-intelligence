@@ -1,46 +1,49 @@
 
 
-# Fix: Glitchy Overlay Dragging
+# Fix: Markers Recreated on Every Drag Tick
 
 ## Root Cause
 
-Every drag event (fired ~60 times/sec) calls `overlayContext.updateBoundingBox()` or `overlayContext.updateOverlay()`, which:
+The `createMarkers` callback (line 282) depends on `overlays` in its dependency array. Every `updateOverlayLocal` call creates a new `overlays` array via `setOverlays`, which:
 
-1. Calls `overlaysApi.updateOverlay()` — an **async function with a 100ms simulated delay** that writes to **localStorage** on every tick
-2. Triggers `setOverlays()` in React state, causing a full re-render
-3. The re-render triggers the `useMultiOverlayRenderer` sync effect, which runs `setupLayers()` — tearing down and rebuilding Mapbox sources/layers on every drag pixel
-4. Meanwhile, `updateMarkerPositions` skips updates during drag (`isDraggingRef.current`), but the full layer rebuild still happens underneath
+1. Recreates `createMarkers` (new reference)
+2. Triggers the effect on line 403 (`useEffect(() => createMarkers(), [createMarkers])`)
+3. Destroys all 4 markers and creates new ones — on every drag pixel
 
-This creates a cascade of async state updates, localStorage writes, and layer rebuilds that produces visible stutter.
+This is why you can only drag 10-20 pixels before it "resets." The marker gets removed and a new one is created at the updated position, losing the drag gesture.
 
-## Fix Strategy
+Additionally, `handleCornerDrag` / `handleMoveDrag` depend on `overlayContext` (the entire context object), which is a new reference every render — compounding the issue.
 
-Separate **drag-time updates** (fast, local-only) from **committed updates** (persisted to API/storage).
+## Fix
 
-### Changes
+### 1. `src/hooks/useMultiOverlayRenderer.ts` — Decouple `createMarkers` from `overlays`
 
-**1. `src/contexts/OverlayContext.tsx` — Add optimistic local update method**
-- Add `updateOverlayLocal(overlayId, updates)` — synchronous, updates React state only (no API call, no localStorage)
-- Add `commitOverlay(overlayId)` — persists current state to API/storage (called on drag end)
-- Expose both in context
+- Remove `overlays` from `createMarkers` dependency array
+- Store overlays in a ref (`overlaysRef`) and read from it inside `createMarkers`
+- `createMarkers` should only re-run when `map`, `editingOverlayId`, or `dragMode` changes — NOT when bounding box coordinates update
+- The `updateMarkerPositions` path (which already skips during drag) handles coordinate sync separately
 
-**2. `src/pages/TrackEditor.tsx` — Use local updates during drag, persist on end**
-- `handleCornerDrag` and `handleMoveDrag` call `updateOverlayLocal` instead of `updateOverlay`/`updateBoundingBox`
-- Pass `onDragEnd` callback to the renderer that calls `commitOverlay` to persist final position
-- Remove dependency on `overlayContext` object (use stable refs)
+### 2. `src/hooks/useMultiOverlayRenderer.ts` — Guard the sync effect during drag
 
-**3. `src/hooks/useMultiOverlayRenderer.ts` — Optimize drag-time rendering**
-- Add `onDragEnd` callback option, fire it on marker dragend
-- During drag, update only the Mapbox image source coordinates directly (via `source.setCoordinates()`) instead of triggering the full sync effect
-- Throttle/skip the full `setupLayers` during active drag using `isDraggingRef`
-- Remove excessive diagnostic `console.log` statements
+- The main sync effect (line 344) already checks `isDraggingRef.current`, but `overlays` changing still triggers it
+- Add the overlays ref pattern here too so the effect doesn't re-run on every drag tick coordinate change
+- Use a separate lightweight effect for drag-time coordinate updates that reads from the ref
 
-**4. `src/services/overlaysApi.ts` — Remove artificial delays**
-- Remove the `await new Promise(resolve => setTimeout(resolve, 100))` delays that add latency to every update
+### 3. `src/pages/TrackEditor.tsx` — Stabilize drag callbacks
 
-### Result
-- Drag events update React state synchronously (no async, no localStorage)
-- Mapbox source coordinates update directly during drag (no layer teardown)
-- localStorage persist happens once on drag end
-- Smooth 60fps dragging
+- `handleCornerDrag`, `handleMoveDrag`, `handleDragEnd` depend on `overlayContext` (object identity changes every render)
+- Use refs for `overlayContext.selectedOverlay` and the update functions to keep callbacks stable
+- This prevents the renderer options from changing on every render, which would trigger marker recreation
+
+### Summary of dependency chain fix
+
+```text
+Before (every drag pixel):
+  updateOverlayLocal → new overlays array → new createMarkers → effect fires → markers destroyed & recreated
+
+After:
+  updateOverlayLocal → new overlays array → overlaysRef updated → NO effect fires
+  Only updateOverlayCoordinates runs (updates Mapbox source in-place)
+  Markers stay alive throughout the entire drag gesture
+```
 
