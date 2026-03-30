@@ -261,6 +261,24 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     await updateOverlay(overlayId, { isLocked: !overlay.isLocked });
   }, [overlays, updateOverlay]);
 
+  // Local-only update — synchronous, no API call
+  const updateOverlayLocal = useCallback((overlayId: string, updates: Partial<MapOverlay>) => {
+    setOverlays(prev =>
+      prev.map(o => o.id === overlayId ? { ...o, ...updates } : o)
+    );
+  }, []);
+
+  // Persist current in-memory state to storage
+  const commitOverlay = useCallback(async (overlayId: string) => {
+    const overlay = overlays.find(o => o.id === overlayId);
+    if (!overlay) return;
+    try {
+      await overlaysApi.updateOverlay(overlayId, overlay);
+    } catch (err) {
+      console.error('Failed to commit overlay:', err);
+    }
+  }, [overlays]);
+
   const refreshOverlays = useCallback(async () => {
     await loadOverlays();
   }, [loadOverlays]);
