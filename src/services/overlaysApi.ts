@@ -49,8 +49,6 @@ export const createOverlay = async (
   venueId: string,
   name?: string
 ): Promise<MapOverlay> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
   const allOverlays = loadOverlays();
   const venueOverlays = allOverlays.filter(o => o.venueId === venueId);
   const maxZOrder = venueOverlays.reduce((max, o) => Math.max(max, o.zOrder), 0);
