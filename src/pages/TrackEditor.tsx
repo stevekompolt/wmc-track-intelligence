@@ -495,10 +495,11 @@ export default function TrackEditor() {
           onToggleFeatureVisibility={handleToggleFeatureVisibility}
           onToggleOverlayVisibility={overlayContext.toggleOverlayVisibility}
           onDeleteItem={handleDeleteItem}
+          onReorderItems={handleReorderItems}
         />
         
         {/* Viewpoints Manager */}
-        <ViewpointManagerPanel />
+        <ViewpointManagerPanel open={viewpointsOpen} onOpenChange={setViewpointsOpen} />
         
         {/* Dynamic Inspector - shows Feature or Overlay inspector based on selection */}
         <div className="p-3 border-b border-border">
