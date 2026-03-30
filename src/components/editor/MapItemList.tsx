@@ -72,8 +72,34 @@ export function MapItemList({
   hiddenItemIds = EMPTY_SET,
   onToggleVisibility,
   onDeleteItem,
+  onReorder,
 }: MapItemListProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: 'feature' | 'overlay'; name: string } | null>(null);
+  const dragItemRef = useRef<number | null>(null);
+  const dragOverRef = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (index: number) => {
+    dragItemRef.current = index;
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    dragOverRef.current = index;
+    setDragOverIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    if (dragItemRef.current !== null && dragOverRef.current !== null && dragItemRef.current !== dragOverRef.current && onReorder) {
+      const reordered = [...items];
+      const [removed] = reordered.splice(dragItemRef.current, 1);
+      reordered.splice(dragOverRef.current, 0, removed);
+      onReorder(reordered);
+    }
+    dragItemRef.current = null;
+    dragOverRef.current = null;
+    setDragOverIndex(null);
+  };
 
   if (items.length === 0) {
     return (
