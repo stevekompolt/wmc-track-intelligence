@@ -1,43 +1,46 @@
 
 
-# Fix: Overlay Image Not Rendering on Map
+# Fix: Glitchy Overlay Dragging
 
-## Diagnosis
+## Root Cause
 
-The overlay image IS in memory (visible in the inspector preview as an `<img>` tag), and the bounding box is valid (corner markers render correctly). No console errors about missing imageUrl. The diagnostic warning we added doesn't fire, confirming the imageUrl exists.
+Every drag event (fired ~60 times/sec) calls `overlayContext.updateBoundingBox()` or `overlayContext.updateOverlay()`, which:
 
-The root cause is that **Mapbox GL JS struggles with very large base64 data URLs** passed directly to `map.addSource({ type: 'image', url: ... })`. While `<img>` tags handle base64 data URLs fine, Mapbox's internal image decoding pipeline can silently fail or ignore very large inline data URLs (typically > 1-2 MB).
+1. Calls `overlaysApi.updateOverlay()` — an **async function with a 100ms simulated delay** that writes to **localStorage** on every tick
+2. Triggers `setOverlays()` in React state, causing a full re-render
+3. The re-render triggers the `useMultiOverlayRenderer` sync effect, which runs `setupLayers()` — tearing down and rebuilding Mapbox sources/layers on every drag pixel
+4. Meanwhile, `updateMarkerPositions` skips updates during drag (`isDraggingRef.current`), but the full layer rebuild still happens underneath
 
-## Fix
+This creates a cascade of async state updates, localStorage writes, and layer rebuilds that produces visible stutter.
 
-Convert base64 data URLs to **Blob URLs** before passing them to Mapbox's image source. Blob URLs (`blob:https://...`) are efficiently handled by Mapbox because the browser serves them as regular HTTP resources.
+## Fix Strategy
+
+Separate **drag-time updates** (fast, local-only) from **committed updates** (persisted to API/storage).
 
 ### Changes
 
-**`src/hooks/useMultiOverlayRenderer.ts`**:
-- Add a helper function `dataUrlToBlobUrl(dataUrl)` that converts base64 data URLs to blob URLs
-- Maintain a `Map<string, string>` of overlay ID → blob URL for cleanup (revoking)
-- In `updateOverlayLayer`, convert `overlay.imageUrl` to a blob URL before passing to `map.addSource` / `source.updateImage`
-- On unmount, revoke all blob URLs to prevent memory leaks
+**1. `src/contexts/OverlayContext.tsx` — Add optimistic local update method**
+- Add `updateOverlayLocal(overlayId, updates)` — synchronous, updates React state only (no API call, no localStorage)
+- Add `commitOverlay(overlayId)` — persists current state to API/storage (called on drag end)
+- Expose both in context
 
-**`src/hooks/useSharedFeatureRenderer.ts`**:
-- Apply the same blob URL conversion in `updateOverlayLayer` for consistency in non-editor modes
+**2. `src/pages/TrackEditor.tsx` — Use local updates during drag, persist on end**
+- `handleCornerDrag` and `handleMoveDrag` call `updateOverlayLocal` instead of `updateOverlay`/`updateBoundingBox`
+- Pass `onDragEnd` callback to the renderer that calls `commitOverlay` to persist final position
+- Remove dependency on `overlayContext` object (use stable refs)
 
-### Implementation Detail
+**3. `src/hooks/useMultiOverlayRenderer.ts` — Optimize drag-time rendering**
+- Add `onDragEnd` callback option, fire it on marker dragend
+- During drag, update only the Mapbox image source coordinates directly (via `source.setCoordinates()`) instead of triggering the full sync effect
+- Throttle/skip the full `setupLayers` during active drag using `isDraggingRef`
+- Remove excessive diagnostic `console.log` statements
 
-```ts
-function dataUrlToBlobUrl(dataUrl: string): string {
-  // Only convert data: URLs, pass through regular URLs
-  if (!dataUrl.startsWith('data:')) return dataUrl;
-  const [header, base64] = dataUrl.split(',');
-  const mime = header.match(/data:(.*?);/)?.[1] || 'image/png';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  const blob = new Blob([bytes], { type: mime });
-  return URL.createObjectURL(blob);
-}
-```
+**4. `src/services/overlaysApi.ts` — Remove artificial delays**
+- Remove the `await new Promise(resolve => setTimeout(resolve, 100))` delays that add latency to every update
 
-This is a targeted fix — only the Mapbox rendering path changes. The rest of the overlay system (storage, inspector preview, context state) continues using the original data URL.
+### Result
+- Drag events update React state synchronously (no async, no localStorage)
+- Mapbox source coordinates update directly during drag (no layer teardown)
+- localStorage persist happens once on drag end
+- Smooth 60fps dragging
 
