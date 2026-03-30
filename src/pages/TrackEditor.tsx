@@ -168,10 +168,21 @@ export default function TrackEditor() {
     return () => clearTimeout(timeout);
   }, [mapRef, selectedTrack]);
 
-  // Overlay drag handlers
+  // Refs for stable drag callbacks — avoids churn from overlayContext changes
+  const selectedOverlayRef = useRef(overlayContext.selectedOverlay);
+  useEffect(() => { selectedOverlayRef.current = overlayContext.selectedOverlay; }, [overlayContext.selectedOverlay]);
+  
+  const updateOverlayLocalRef = useRef(overlayContext.updateOverlayLocal);
+  useEffect(() => { updateOverlayLocalRef.current = overlayContext.updateOverlayLocal; }, [overlayContext.updateOverlayLocal]);
+  
+  const commitOverlayRef = useRef(overlayContext.commitOverlay);
+  useEffect(() => { commitOverlayRef.current = overlayContext.commitOverlay; }, [overlayContext.commitOverlay]);
+
+  // Overlay drag handlers — stable, no dependency on overlayContext
   const handleCornerDrag = useCallback((corner: CornerHandle, lat: number, lng: number) => {
-    if (!overlayContext.selectedOverlay) return;
-    const currentBox = overlayContext.selectedOverlay.boundingBox;
+    const overlay = selectedOverlayRef.current;
+    if (!overlay) return;
+    const currentBox = overlay.boundingBox;
     const newBox = { ...currentBox };
     
     switch (corner) {
@@ -181,13 +192,14 @@ export default function TrackEditor() {
       case 'se': newBox.south = lat; newBox.east = lng; break;
     }
     
-    overlayContext.updateOverlayLocal(overlayContext.selectedOverlay.id, { boundingBox: newBox });
-  }, [overlayContext]);
+    updateOverlayLocalRef.current(overlay.id, { boundingBox: newBox });
+  }, []);
 
   const handleMoveDrag = useCallback((deltaLat: number, deltaLng: number) => {
-    if (!overlayContext.selectedOverlay) return;
-    const box = overlayContext.selectedOverlay.boundingBox;
-    overlayContext.updateOverlayLocal(overlayContext.selectedOverlay.id, {
+    const overlay = selectedOverlayRef.current;
+    if (!overlay) return;
+    const box = overlay.boundingBox;
+    updateOverlayLocalRef.current(overlay.id, {
       boundingBox: {
         north: box.north + deltaLat,
         south: box.south + deltaLat,
@@ -195,12 +207,13 @@ export default function TrackEditor() {
         west: box.west + deltaLng,
       },
     });
-  }, [overlayContext]);
+  }, []);
 
   const handleDragEnd = useCallback(() => {
-    if (!overlayContext.selectedOverlay) return;
-    overlayContext.commitOverlay(overlayContext.selectedOverlay.id);
-  }, [overlayContext]);
+    const overlay = selectedOverlayRef.current;
+    if (!overlay) return;
+    commitOverlayRef.current(overlay.id);
+  }, []);
 
   // Center overlay on venue
   const handleCenterOnVenue = useCallback(() => {
@@ -298,13 +311,20 @@ export default function TrackEditor() {
 
   // Handle delete item from unified list
   const handleDeleteItem = useCallback((id: string, type: SelectionType) => {
+    // Clear selection and edit state FIRST
+    handleSelectItem(null, null);
+    setOverlayDragMode('none');
     if (type === 'feature') {
       setEditingGeometryFeatureId(null);
+      setHiddenFeatureIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       featureContext.deleteFeature(id);
     } else if (type === 'overlay') {
       overlayContext.deleteOverlay(id);
     }
-    handleSelectItem(null, null);
   }, [featureContext, overlayContext, handleSelectItem]);
 
   // Handle reorder from drag-and-drop

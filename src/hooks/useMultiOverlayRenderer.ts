@@ -60,6 +60,13 @@ export function useMultiOverlayRenderer({
   const dragStartRef = useRef<{ lat: number; lng: number } | null>(null);
   const isDraggingRef = useRef(false);
   
+  // === REFS: decouple reactive state from callbacks/effects ===
+  const overlaysRef = useRef(overlays);
+  useEffect(() => { overlaysRef.current = overlays; }, [overlays]);
+
+  const hiddenOverlayIdsRef = useRef(hiddenOverlayIds);
+  useEffect(() => { hiddenOverlayIdsRef.current = hiddenOverlayIds; }, [hiddenOverlayIds]);
+
   // Store callback refs
   const onCornerDragRef = useRef(onCornerDrag);
   onCornerDragRef.current = onCornerDrag;
@@ -156,13 +163,14 @@ export function useMultiOverlayRenderer({
     }
     
     renderedOverlayIdsRef.current.delete(overlayId);
+    map.triggerRepaint();
   }, [map]);
 
-  // Update ghost preview layer for editing
+  // Update ghost preview layer for editing — uses ref to avoid dep on overlays
   const updateGhostLayer = useCallback(() => {
     if (!map) return;
     
-    const editingOverlay = overlays.find(o => o.id === editingOverlayId);
+    const editingOverlay = overlaysRef.current.find(o => o.id === editingOverlayId);
     
     if (!ghostBounds || !editingOverlay?.imageUrl) {
       if (map.getLayer(ghostLayerId)) {
@@ -209,7 +217,7 @@ export function useMultiOverlayRenderer({
         },
       });
     }
-  }, [map, overlays, editingOverlayId, ghostBounds]);
+  }, [map, editingOverlayId, ghostBounds]);
 
   // Create corner marker
   const createCornerMarker = useCallback((
@@ -278,15 +286,16 @@ export function useMultiOverlayRenderer({
     return marker;
   }, []);
 
-  // Create/update markers for editing overlay
+  // Create/update markers for editing overlay — uses overlaysRef, NO dep on overlays
   const createMarkers = useCallback(() => {
     // Remove existing markers
     markersRef.current.forEach(m => m.remove());
     markersRef.current.clear();
+    isDraggingRef.current = false; // reset drag state when markers are rebuilt
     
     if (!map || !editingOverlayId) return;
     
-    const editingOverlay = overlays.find(o => o.id === editingOverlayId);
+    const editingOverlay = overlaysRef.current.find(o => o.id === editingOverlayId);
     if (!editingOverlay || !editingOverlay.imageUrl) return;
 
     const { north, south, east, west } = editingOverlay.boundingBox;
@@ -314,13 +323,14 @@ export function useMultiOverlayRenderer({
       marker.addTo(map);
       markersRef.current.set('center', marker);
     }
-  }, [map, overlays, editingOverlayId, dragMode, createCornerMarker, createCenterMarker]);
+  }, [map, editingOverlayId, dragMode, createCornerMarker, createCenterMarker]);
+  // NOTE: overlays removed from deps — reads overlaysRef.current instead
 
-  // Update marker positions without recreating
+  // Update marker positions without recreating (only when NOT dragging)
   const updateMarkerPositions = useCallback(() => {
     if (!editingOverlayId || isDraggingRef.current) return;
     
-    const editingOverlay = overlays.find(o => o.id === editingOverlayId);
+    const editingOverlay = overlaysRef.current.find(o => o.id === editingOverlayId);
     if (!editingOverlay) return;
     
     const { north, south, east, west } = editingOverlay.boundingBox;
@@ -338,21 +348,33 @@ export function useMultiOverlayRenderer({
       const centerLng = (east + west) / 2;
       markersRef.current.get('center')?.setLngLat([centerLng, centerLat]);
     }
-  }, [overlays, editingOverlayId]);
+  }, [editingOverlayId]);
+  // NOTE: overlays removed from deps — reads overlaysRef.current
 
-  // Effect: Sync overlays with map
-  useEffect(() => {
+  // Orphan cleanup: remove any map layers/sources with our prefix that aren't in current state
+  const cleanOrphanLayers = useCallback(() => {
     if (!map) return;
-    
-    // During active drag, only update coordinates — don't rebuild layers
-    if (isDraggingRef.current) {
-      overlays.forEach(o => {
-        if (!hiddenOverlayIds.has(o.id) && o.imageUrl) {
-          updateOverlayCoordinates(o);
+    try {
+      const style = map.getStyle();
+      if (!style?.layers) return;
+      const currentIds = new Set(overlaysRef.current.map(o => o.id));
+      
+      style.layers.forEach((layer: any) => {
+        if (layer.id.startsWith('overlay-layer-')) {
+          const overlayId = layer.id.replace('overlay-layer-', '');
+          if (!currentIds.has(overlayId)) {
+            removeOverlayLayer(overlayId);
+          }
         }
       });
-      return;
+    } catch {
+      // ignore
     }
+  }, [map, removeOverlayLayer]);
+
+  // Effect: Sync overlays with map — ALWAYS reconciles structure, fast-path coordinates during drag
+  useEffect(() => {
+    if (!map) return;
     
     const setupLayers = () => {
       const allOverlayIds = new Set(overlays.map(o => o.id));
@@ -361,17 +383,27 @@ export function useMultiOverlayRenderer({
       );
       const visibleIds = new Set(visibleOverlays.map(o => o.id));
       
-      // Remove deleted or hidden overlays
+      // ALWAYS remove deleted or hidden overlays — even during drag
       renderedOverlayIdsRef.current.forEach(id => {
         if (!allOverlayIds.has(id) || !visibleIds.has(id)) {
           removeOverlayLayer(id);
         }
       });
       
-      // Add/update visible overlays
-      visibleOverlays.forEach(overlay => {
-        updateOverlayLayer(overlay);
-      });
+      // Clean orphan layers
+      cleanOrphanLayers();
+      
+      if (isDraggingRef.current) {
+        // During drag: only update coordinates (fast path)
+        visibleOverlays.forEach(o => {
+          updateOverlayCoordinates(o);
+        });
+      } else {
+        // Not dragging: full add/update
+        visibleOverlays.forEach(overlay => {
+          updateOverlayLayer(overlay);
+        });
+      }
       
       map.triggerRepaint();
     };
@@ -392,22 +424,22 @@ export function useMultiOverlayRenderer({
       map.off('style.load', handleStyleLoad);
       map.off('style.load', setupLayers);
     };
-  }, [map, overlays, hiddenOverlayIds, updateOverlayLayer, removeOverlayLayer, updateOverlayCoordinates]);
+  }, [map, overlays, hiddenOverlayIds, updateOverlayLayer, removeOverlayLayer, updateOverlayCoordinates, cleanOrphanLayers]);
 
   // Effect: Update ghost layer
   useEffect(() => {
     updateGhostLayer();
   }, [updateGhostLayer]);
 
-  // Effect: Create/remove markers when drag mode changes
+  // Effect: Create/remove markers when drag mode or editing overlay changes
   useEffect(() => {
     createMarkers();
   }, [createMarkers]);
 
-  // Effect: Update marker positions
+  // Effect: Update marker positions when overlays change (but not during drag)
   useEffect(() => {
     updateMarkerPositions();
-  }, [updateMarkerPositions]);
+  }, [overlays, updateMarkerPositions]);
 
   // Effect: Error handler for image loading
   useEffect(() => {

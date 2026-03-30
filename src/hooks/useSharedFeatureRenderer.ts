@@ -247,6 +247,8 @@ export function useSharedFeatureRenderer({
       visibleOverlays.forEach(overlay => {
         updateOverlayLayer(overlay);
       });
+      
+      map.triggerRepaint();
     };
 
     if (map.isStyleLoaded()) {
