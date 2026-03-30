@@ -311,13 +311,20 @@ export default function TrackEditor() {
 
   // Handle delete item from unified list
   const handleDeleteItem = useCallback((id: string, type: SelectionType) => {
+    // Clear selection and edit state FIRST
+    handleSelectItem(null, null);
+    setOverlayDragMode('none');
     if (type === 'feature') {
       setEditingGeometryFeatureId(null);
+      setHiddenFeatureIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       featureContext.deleteFeature(id);
     } else if (type === 'overlay') {
       overlayContext.deleteOverlay(id);
     }
-    handleSelectItem(null, null);
   }, [featureContext, overlayContext, handleSelectItem]);
 
   // Handle reorder from drag-and-drop

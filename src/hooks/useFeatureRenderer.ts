@@ -339,6 +339,7 @@ export function useFeatureRenderer({
         !hiddenFeatureIds.has(f.id)
       );
       source.setData(toGeoJSON(renderableFeatures));
+      map.triggerRepaint();
     }
   }, [map, features, toGeoJSON, hiddenFeatureIds, selectedFeatureId]);
   // NOTE: selectedFeatureId is needed to update "selected" property even though toGeoJSON uses ref
