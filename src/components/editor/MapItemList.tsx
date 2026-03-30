@@ -31,6 +31,7 @@ interface MapItemListProps {
   hiddenItemIds: Set<string>;
   onToggleVisibility: (id: string, type: 'feature' | 'overlay') => void;
   onDeleteItem?: (id: string, type: 'feature' | 'overlay') => void;
+  onReorder?: (reorderedItems: MapItem[]) => void;
 }
 
 const EMPTY_SET = new Set<string>();
