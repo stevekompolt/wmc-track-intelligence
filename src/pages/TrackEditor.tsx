@@ -360,7 +360,7 @@ export default function TrackEditor() {
       {/* Right Panel */}
       <div className="absolute top-0 right-0 bottom-0 w-[360px] z-10 border-l border-border bg-card/95 backdrop-blur flex flex-col pointer-events-auto">
         {/* Feature Toolbox - Collapsible */}
-        <Collapsible defaultOpen>
+        <Collapsible open={toolboxOpen} onOpenChange={setToolboxOpen}>
           <CollapsibleTrigger className="w-full p-3 border-b border-border flex items-center justify-between hover:bg-muted/50 transition-colors">
             <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
               <Layers className="h-4 w-4 text-primary" />
