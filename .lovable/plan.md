@@ -1,55 +1,48 @@
 
+Goal: fix two linked regressions in `/editor`:
+1) overlay drag/corner edits resetting after ~10–20px, and
+2) deleted overlays/features disappearing from list but still visible on map.
 
-# Improve Overlay Editing UX: Auto-Collapse Panels + Drag-to-Reorder Layers
+What I found
+- `useMultiOverlayRenderer.createMarkers` still depends on `overlays`, so every drag tick (state update) recreates markers and breaks the drag gesture.
+- `TrackEditor` drag callbacks depend on the full `overlayContext` object, so callbacks churn on each render and can retrigger marker setup.
+- In `useMultiOverlayRenderer`, when `isDraggingRef.current === true`, the sync effect returns early and skips delete/hidden cleanup, so removed overlays can remain rendered.
+- Renderer cleanup relies heavily on `renderedOverlayIdsRef`; if it desyncs from actual map layers/sources, stale layers can remain.
 
-## Problem
+Implementation plan
 
-The right panel stacks four collapsible sections (Feature Toolbox, Map Layers, Viewpoints, Inspector) vertically. To reach the Overlay Editor/Inspector at the bottom, the user must manually collapse the panels above. Layer z-order is set via a numeric input instead of intuitive drag-and-drop.
+1) Stabilize overlay drag lifecycle (`src/hooks/useMultiOverlayRenderer.ts`)
+- Add `overlaysRef` (and keep it updated in an effect).
+- Make `createMarkers` read from `overlaysRef.current` and remove `overlays` from its dependency list.
+- Keep marker recreation limited to: `map`, `editingOverlayId`, `dragMode`, lock/image validity changes.
+- Ensure drag session always resets cleanly (`isDraggingRef=false`) when selection changes, marker set is rebuilt, or overlay is removed.
 
-## Changes
+2) Prevent callback churn from breaking marker state (`src/pages/TrackEditor.tsx`)
+- Replace direct `overlayContext` usage inside drag handlers with refs for:
+  - current selected overlay
+  - `updateOverlayLocal`
+  - `commitOverlay`
+- Keep `handleCornerDrag`, `handleMoveDrag`, `handleDragEnd` stable (minimal dependencies).
+- Reset overlay drag mode when selected overlay is cleared/deleted.
 
-### 1. Auto-collapse panels when an overlay is selected
+3) Always reconcile map layers even during drag (`src/hooks/useMultiOverlayRenderer.ts`)
+- Split sync responsibilities:
+  - Structural reconciliation (add/remove/hide/unhide) always runs.
+  - Fast coordinate updates run during active drag (`setCoordinates` path).
+- Remove the “return early” behavior that skips delete cleanup while dragging.
+- Add orphan cleanup by scanning map style IDs with renderer prefixes (`overlay-layer-`, `overlay-image-`) and removing anything no longer present in current overlay state.
 
-**File: `src/pages/TrackEditor.tsx`**
+4) Harden feature/overlay visual removal updates
+- `src/hooks/useFeatureRenderer.ts`: after `source.setData(...)`, trigger repaint to force immediate visual removal.
+- `src/hooks/useSharedFeatureRenderer.ts`: same immediate repaint behavior for shared source updates; ensure editor mode aggressively hides/removes shared overlay layers so editor view never shows stale shared layers.
 
-- Add state: `toolboxOpen`, `viewpointsOpen` (default `true`)
-- When `selectionType` changes to `'overlay'`, auto-collapse Feature Toolbox and Viewpoints panels (set both to `false`)
-- When selection clears or switches to `'feature'`, restore them to `true`
-- Pass `open`/`onOpenChange` to the Feature Toolbox `<Collapsible>` and `<ViewpointManagerPanel>`
-- This immediately surfaces the Overlay Inspector without manual collapsing
+5) Small state hygiene on delete (`src/pages/TrackEditor.tsx`)
+- When deleting a feature, also remove its id from `hiddenFeatureIds` to avoid stale hidden-state residue.
+- Ensure delete flow clears selection + edit states before/while async delete resolves.
 
-### 2. Add `isCollapsed` prop to ViewpointManagerPanel
-
-**File: `src/components/viewpoints/ViewpointManagerPanel.tsx`**
-
-- Accept `open` and `onOpenChange` props to allow external control of its collapsible state
-
-### 3. Drag-to-reorder layers in MapItemList
-
-**File: `src/components/editor/MapItemList.tsx`**
-
-- Add drag-and-drop reordering using native HTML drag events (`draggable`, `onDragStart`, `onDragOver`, `onDrop`)
-- Add a drag handle grip icon to each row
-- On drop, call a new `onReorder` callback with the reordered item list
-
-**File: `src/components/editor/CollapsibleMapItemList.tsx`**
-
-- Accept and forward `onReorderItems` callback
-- On reorder, update `zOrder` values for all affected items by calling context update methods
-
-**File: `src/pages/TrackEditor.tsx`**
-
-- Implement `handleReorderItems` that updates `zOrder` on each reordered feature/overlay via their respective contexts
-
-### 4. Remove z-order numeric input from OverlayEditorPanel
-
-**File: `src/components/editor/OverlayEditorPanel.tsx`**
-
-- Remove the manual z-order `<Input>` field since ordering is now handled by drag-and-drop in the layer list
-
-## Result
-
-- Selecting an overlay auto-collapses unneeded panels, immediately showing the inspector
-- Layer ordering is intuitive drag-and-drop instead of manual number entry
-- No structural changes to data model — still uses `zOrder` under the hood
-
+Validation plan (end-to-end)
+- Add image overlay → enable Corners → drag continuously across large distance (no reset).
+- Add image overlay → Move mode → continuous drag for several seconds (no jitter/reset).
+- Delete selected overlay during/after drag → layer disappears immediately from map and list.
+- Delete line feature and polygon feature → both disappear immediately from map and list.
+- Repeat after map style switch and after creating 3+ overlays to confirm no orphan layers remain.
