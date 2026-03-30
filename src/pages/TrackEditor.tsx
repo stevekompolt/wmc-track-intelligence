@@ -312,7 +312,7 @@ export default function TrackEditor() {
     reorderedItems.forEach((item, index) => {
       const newZOrder = index + 1;
       if (item.type === 'feature') {
-        featureContext.updateStyle(item.data.id, { zOrder: newZOrder } as any);
+        featureContext.updateFeature(item.data.id, { zOrder: newZOrder });
       } else {
         overlayContext.updateOverlay(item.data.id, { zOrder: newZOrder });
       }
