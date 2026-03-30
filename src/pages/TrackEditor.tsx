@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon, ChevronDown, Scan } from 'lucide-react';
+import type { MapItem } from '@/components/editor/MapItemList';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
