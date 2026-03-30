@@ -34,7 +34,6 @@ const saveOverlays = (overlays: MapOverlay[]): boolean => {
 
 // Get all overlays for a venue
 export const getOverlaysByVenue = async (venueId: string): Promise<MapOverlay[]> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
   const allOverlays = loadOverlays();
   return allOverlays.filter(o => o.venueId === venueId);
 };
