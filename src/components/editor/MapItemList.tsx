@@ -1,7 +1,7 @@
 // Unified list component for displaying both features and overlays
 
-import { useState } from 'react';
-import { MapPin, Spline, Hexagon, Eye, EyeOff, ImageIcon, Trash2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { MapPin, Spline, Hexagon, Eye, EyeOff, ImageIcon, Trash2, GripVertical } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
