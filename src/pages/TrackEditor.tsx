@@ -61,6 +61,19 @@ export default function TrackEditor() {
   // Overlay editor state
   const [overlayDragMode, setOverlayDragMode] = useState<'none' | 'corners' | 'move'>('none');
   const [overlayGhostBounds, setOverlayGhostBounds] = useState<BoundingBox | null>(null);
+  const [toolboxOpen, setToolboxOpen] = useState(true);
+  const [viewpointsOpen, setViewpointsOpen] = useState(true);
+
+  // Auto-collapse panels when overlay is selected
+  useEffect(() => {
+    if (selectionType === 'overlay') {
+      setToolboxOpen(false);
+      setViewpointsOpen(false);
+    } else {
+      setToolboxOpen(true);
+      setViewpointsOpen(true);
+    }
+  }, [selectionType]);
 
   // Toggle feature visibility on map
   const handleToggleFeatureVisibility = useCallback((featureId: string) => {
