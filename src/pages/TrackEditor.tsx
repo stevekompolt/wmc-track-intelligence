@@ -158,34 +158,22 @@ export default function TrackEditor() {
   const handleCornerDrag = useCallback((corner: CornerHandle, lat: number, lng: number) => {
     if (!overlayContext.selectedOverlay) return;
     const currentBox = overlayContext.selectedOverlay.boundingBox;
-    const updates: Partial<BoundingBox> = {};
+    const newBox = { ...currentBox };
     
     switch (corner) {
-      case 'nw':
-        updates.north = lat;
-        updates.west = lng;
-        break;
-      case 'ne':
-        updates.north = lat;
-        updates.east = lng;
-        break;
-      case 'sw':
-        updates.south = lat;
-        updates.west = lng;
-        break;
-      case 'se':
-        updates.south = lat;
-        updates.east = lng;
-        break;
+      case 'nw': newBox.north = lat; newBox.west = lng; break;
+      case 'ne': newBox.north = lat; newBox.east = lng; break;
+      case 'sw': newBox.south = lat; newBox.west = lng; break;
+      case 'se': newBox.south = lat; newBox.east = lng; break;
     }
     
-    overlayContext.updateBoundingBox(overlayContext.selectedOverlay.id, updates);
+    overlayContext.updateOverlayLocal(overlayContext.selectedOverlay.id, { boundingBox: newBox });
   }, [overlayContext]);
 
   const handleMoveDrag = useCallback((deltaLat: number, deltaLng: number) => {
     if (!overlayContext.selectedOverlay) return;
     const box = overlayContext.selectedOverlay.boundingBox;
-    overlayContext.updateOverlay(overlayContext.selectedOverlay.id, {
+    overlayContext.updateOverlayLocal(overlayContext.selectedOverlay.id, {
       boundingBox: {
         north: box.north + deltaLat,
         south: box.south + deltaLat,
@@ -193,6 +181,11 @@ export default function TrackEditor() {
         west: box.west + deltaLng,
       },
     });
+  }, [overlayContext]);
+
+  const handleDragEnd = useCallback(() => {
+    if (!overlayContext.selectedOverlay) return;
+    overlayContext.commitOverlay(overlayContext.selectedOverlay.id);
   }, [overlayContext]);
 
   // Center overlay on venue
