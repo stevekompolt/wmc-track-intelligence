@@ -1,49 +1,55 @@
 
 
-# Fix: Markers Recreated on Every Drag Tick
+# Improve Overlay Editing UX: Auto-Collapse Panels + Drag-to-Reorder Layers
 
-## Root Cause
+## Problem
 
-The `createMarkers` callback (line 282) depends on `overlays` in its dependency array. Every `updateOverlayLocal` call creates a new `overlays` array via `setOverlays`, which:
+The right panel stacks four collapsible sections (Feature Toolbox, Map Layers, Viewpoints, Inspector) vertically. To reach the Overlay Editor/Inspector at the bottom, the user must manually collapse the panels above. Layer z-order is set via a numeric input instead of intuitive drag-and-drop.
 
-1. Recreates `createMarkers` (new reference)
-2. Triggers the effect on line 403 (`useEffect(() => createMarkers(), [createMarkers])`)
-3. Destroys all 4 markers and creates new ones — on every drag pixel
+## Changes
 
-This is why you can only drag 10-20 pixels before it "resets." The marker gets removed and a new one is created at the updated position, losing the drag gesture.
+### 1. Auto-collapse panels when an overlay is selected
 
-Additionally, `handleCornerDrag` / `handleMoveDrag` depend on `overlayContext` (the entire context object), which is a new reference every render — compounding the issue.
+**File: `src/pages/TrackEditor.tsx`**
 
-## Fix
+- Add state: `toolboxOpen`, `viewpointsOpen` (default `true`)
+- When `selectionType` changes to `'overlay'`, auto-collapse Feature Toolbox and Viewpoints panels (set both to `false`)
+- When selection clears or switches to `'feature'`, restore them to `true`
+- Pass `open`/`onOpenChange` to the Feature Toolbox `<Collapsible>` and `<ViewpointManagerPanel>`
+- This immediately surfaces the Overlay Inspector without manual collapsing
 
-### 1. `src/hooks/useMultiOverlayRenderer.ts` — Decouple `createMarkers` from `overlays`
+### 2. Add `isCollapsed` prop to ViewpointManagerPanel
 
-- Remove `overlays` from `createMarkers` dependency array
-- Store overlays in a ref (`overlaysRef`) and read from it inside `createMarkers`
-- `createMarkers` should only re-run when `map`, `editingOverlayId`, or `dragMode` changes — NOT when bounding box coordinates update
-- The `updateMarkerPositions` path (which already skips during drag) handles coordinate sync separately
+**File: `src/components/viewpoints/ViewpointManagerPanel.tsx`**
 
-### 2. `src/hooks/useMultiOverlayRenderer.ts` — Guard the sync effect during drag
+- Accept `open` and `onOpenChange` props to allow external control of its collapsible state
 
-- The main sync effect (line 344) already checks `isDraggingRef.current`, but `overlays` changing still triggers it
-- Add the overlays ref pattern here too so the effect doesn't re-run on every drag tick coordinate change
-- Use a separate lightweight effect for drag-time coordinate updates that reads from the ref
+### 3. Drag-to-reorder layers in MapItemList
 
-### 3. `src/pages/TrackEditor.tsx` — Stabilize drag callbacks
+**File: `src/components/editor/MapItemList.tsx`**
 
-- `handleCornerDrag`, `handleMoveDrag`, `handleDragEnd` depend on `overlayContext` (object identity changes every render)
-- Use refs for `overlayContext.selectedOverlay` and the update functions to keep callbacks stable
-- This prevents the renderer options from changing on every render, which would trigger marker recreation
+- Add drag-and-drop reordering using native HTML drag events (`draggable`, `onDragStart`, `onDragOver`, `onDrop`)
+- Add a drag handle grip icon to each row
+- On drop, call a new `onReorder` callback with the reordered item list
 
-### Summary of dependency chain fix
+**File: `src/components/editor/CollapsibleMapItemList.tsx`**
 
-```text
-Before (every drag pixel):
-  updateOverlayLocal → new overlays array → new createMarkers → effect fires → markers destroyed & recreated
+- Accept and forward `onReorderItems` callback
+- On reorder, update `zOrder` values for all affected items by calling context update methods
 
-After:
-  updateOverlayLocal → new overlays array → overlaysRef updated → NO effect fires
-  Only updateOverlayCoordinates runs (updates Mapbox source in-place)
-  Markers stay alive throughout the entire drag gesture
-```
+**File: `src/pages/TrackEditor.tsx`**
+
+- Implement `handleReorderItems` that updates `zOrder` on each reordered feature/overlay via their respective contexts
+
+### 4. Remove z-order numeric input from OverlayEditorPanel
+
+**File: `src/components/editor/OverlayEditorPanel.tsx`**
+
+- Remove the manual z-order `<Input>` field since ordering is now handled by drag-and-drop in the layer list
+
+## Result
+
+- Selecting an overlay auto-collapses unneeded panels, immediately showing the inspector
+- Layer ordering is intuitive drag-and-drop instead of manual number entry
+- No structural changes to data model — still uses `zOrder` under the hood
 
