@@ -67,6 +67,9 @@ export function useMultiOverlayRenderer({
   const onMoveDragRef = useRef(onMoveDrag);
   onMoveDragRef.current = onMoveDrag;
 
+  const onDragEndRef = useRef(onDragEnd);
+  onDragEndRef.current = onDragEnd;
+
   // Add/update a single overlay
   const updateOverlayLayer = useCallback((overlay: MapOverlay) => {
     if (!map || !overlay.imageUrl) {
