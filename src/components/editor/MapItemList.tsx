@@ -1,7 +1,7 @@
 // Unified list component for displaying both features and overlays
 
-import { useState } from 'react';
-import { MapPin, Spline, Hexagon, Eye, EyeOff, ImageIcon, Trash2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { MapPin, Spline, Hexagon, Eye, EyeOff, ImageIcon, Trash2, GripVertical } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -31,6 +31,7 @@ interface MapItemListProps {
   hiddenItemIds: Set<string>;
   onToggleVisibility: (id: string, type: 'feature' | 'overlay') => void;
   onDeleteItem?: (id: string, type: 'feature' | 'overlay') => void;
+  onReorder?: (reorderedItems: MapItem[]) => void;
 }
 
 const EMPTY_SET = new Set<string>();
@@ -71,8 +72,34 @@ export function MapItemList({
   hiddenItemIds = EMPTY_SET,
   onToggleVisibility,
   onDeleteItem,
+  onReorder,
 }: MapItemListProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: 'feature' | 'overlay'; name: string } | null>(null);
+  const dragItemRef = useRef<number | null>(null);
+  const dragOverRef = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (index: number) => {
+    dragItemRef.current = index;
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    dragOverRef.current = index;
+    setDragOverIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    if (dragItemRef.current !== null && dragOverRef.current !== null && dragItemRef.current !== dragOverRef.current && onReorder) {
+      const reordered = [...items];
+      const [removed] = reordered.splice(dragItemRef.current, 1);
+      reordered.splice(dragOverRef.current, 0, removed);
+      onReorder(reordered);
+    }
+    dragItemRef.current = null;
+    dragOverRef.current = null;
+    setDragOverIndex(null);
+  };
 
   if (items.length === 0) {
     return (
@@ -98,22 +125,31 @@ export function MapItemList({
     <>
       <ScrollArea className="h-[200px]">
         <div className="p-1">
-          {items.map((item) => {
+          {items.map((item, index) => {
             const isHidden = hiddenItemIds.has(item.data.id);
             const isSelected = selectedItemId === item.data.id && selectedItemType === item.type;
             const status = getItemStatus(item);
+            const isDragOver = dragOverIndex === index;
             
             return (
               <div
                 key={`${item.type}-${item.data.id}`}
+                draggable={!!onReorder}
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
                 className={cn(
                   "w-full flex items-center gap-2 px-2 py-1.5 rounded transition-colors",
                   isSelected
                     ? "bg-primary/10 border border-primary/30"
                     : "hover:bg-muted/50 border border-transparent",
-                  isHidden && "opacity-50"
+                  isHidden && "opacity-50",
+                  isDragOver && "border-t-2 border-t-primary"
                 )}
               >
+                {onReorder && (
+                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground cursor-grab shrink-0" />
+                )}
                 <button
                   onClick={() => onSelectItem(item.data.id, item.type)}
                   className="flex-1 flex items-center gap-2 text-left min-w-0"

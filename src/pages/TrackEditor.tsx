@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon, ChevronDown, Scan } from 'lucide-react';
+import type { MapItem } from '@/components/editor/MapItemList';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -60,6 +61,19 @@ export default function TrackEditor() {
   // Overlay editor state
   const [overlayDragMode, setOverlayDragMode] = useState<'none' | 'corners' | 'move'>('none');
   const [overlayGhostBounds, setOverlayGhostBounds] = useState<BoundingBox | null>(null);
+  const [toolboxOpen, setToolboxOpen] = useState(true);
+  const [viewpointsOpen, setViewpointsOpen] = useState(true);
+
+  // Auto-collapse panels when overlay is selected
+  useEffect(() => {
+    if (selectionType === 'overlay') {
+      setToolboxOpen(false);
+      setViewpointsOpen(false);
+    } else {
+      setToolboxOpen(true);
+      setViewpointsOpen(true);
+    }
+  }, [selectionType]);
 
   // Toggle feature visibility on map
   const handleToggleFeatureVisibility = useCallback((featureId: string) => {
@@ -293,6 +307,18 @@ export default function TrackEditor() {
     handleSelectItem(null, null);
   }, [featureContext, overlayContext, handleSelectItem]);
 
+  // Handle reorder from drag-and-drop
+  const handleReorderItems = useCallback((reorderedItems: MapItem[]) => {
+    reorderedItems.forEach((item, index) => {
+      const newZOrder = index + 1;
+      if (item.type === 'feature') {
+        featureContext.updateFeature(item.data.id, { zOrder: newZOrder });
+      } else {
+        overlayContext.updateOverlay(item.data.id, { zOrder: newZOrder });
+      }
+    });
+  }, [featureContext, overlayContext]);
+
   // Get current drawing instruction
   const drawingInstruction = featureDrawing.mode !== 'none' ? DRAWING_INSTRUCTIONS[featureDrawing.mode] : null;
 
@@ -334,7 +360,7 @@ export default function TrackEditor() {
       {/* Right Panel */}
       <div className="absolute top-0 right-0 bottom-0 w-[360px] z-10 border-l border-border bg-card/95 backdrop-blur flex flex-col pointer-events-auto">
         {/* Feature Toolbox - Collapsible */}
-        <Collapsible defaultOpen>
+        <Collapsible open={toolboxOpen} onOpenChange={setToolboxOpen}>
           <CollapsibleTrigger className="w-full p-3 border-b border-border flex items-center justify-between hover:bg-muted/50 transition-colors">
             <h2 className="font-display text-sm font-semibold tracking-wider flex items-center gap-2">
               <Layers className="h-4 w-4 text-primary" />
@@ -469,10 +495,11 @@ export default function TrackEditor() {
           onToggleFeatureVisibility={handleToggleFeatureVisibility}
           onToggleOverlayVisibility={overlayContext.toggleOverlayVisibility}
           onDeleteItem={handleDeleteItem}
+          onReorderItems={handleReorderItems}
         />
         
         {/* Viewpoints Manager */}
-        <ViewpointManagerPanel />
+        <ViewpointManagerPanel open={viewpointsOpen} onOpenChange={setViewpointsOpen} />
         
         {/* Dynamic Inspector - shows Feature or Overlay inspector based on selection */}
         <div className="p-3 border-b border-border">

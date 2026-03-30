@@ -18,6 +18,7 @@ interface CollapsibleMapItemListProps {
   onToggleFeatureVisibility: (featureId: string) => void;
   onToggleOverlayVisibility: (overlayId: string) => void;
   onDeleteItem?: (id: string, type: 'feature' | 'overlay') => void;
+  onReorderItems?: (reorderedItems: MapItem[]) => void;
 }
 
 const FeatureTypeIcon = ({ type, color }: { type: VenueFeature['type']; color: string }) => {
@@ -44,6 +45,7 @@ export function CollapsibleMapItemList({
   onToggleFeatureVisibility,
   onToggleOverlayVisibility,
   onDeleteItem,
+  onReorderItems,
 }: CollapsibleMapItemListProps) {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -109,6 +111,7 @@ export function CollapsibleMapItemList({
           hiddenItemIds={hiddenItemIds}
           onToggleVisibility={handleToggleVisibility}
           onDeleteItem={onDeleteItem}
+          onReorder={onReorderItems}
         />
       </CollapsibleContent>
     </Collapsible>

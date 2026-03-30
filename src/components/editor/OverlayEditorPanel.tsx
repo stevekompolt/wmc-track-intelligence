@@ -305,17 +305,6 @@ export function OverlayEditorPanel({
             />
           </div>
 
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Z-Order</Label>
-            <Input
-              type="number"
-              value={overlay.zOrder}
-              onChange={(e) => onUpdateOverlay({ zOrder: parseInt(e.target.value) || 0 })}
-              className="text-xs font-mono"
-              disabled={overlay.isLocked}
-            />
-          </div>
-
           <div className="space-y-2">
             <Label className="text-xs text-muted-foreground">Visibility</Label>
             <div className="space-y-2">
