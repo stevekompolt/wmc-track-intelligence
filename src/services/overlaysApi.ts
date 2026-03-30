@@ -109,8 +109,6 @@ export const updateOverlay = async (
 
 // Delete an overlay
 export const deleteOverlay = async (overlayId: string): Promise<boolean> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
   const allOverlays = loadOverlays();
   const index = allOverlays.findIndex(o => o.id === overlayId);
   
