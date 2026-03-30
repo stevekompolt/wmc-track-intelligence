@@ -111,6 +111,7 @@ export function CollapsibleMapItemList({
           hiddenItemIds={hiddenItemIds}
           onToggleVisibility={handleToggleVisibility}
           onDeleteItem={onDeleteItem}
+          onReorder={onReorderItems}
         />
       </CollapsibleContent>
     </Collapsible>
