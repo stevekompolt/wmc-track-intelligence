@@ -342,29 +342,26 @@ export function useMultiOverlayRenderer({
 
   // Effect: Sync overlays with map
   useEffect(() => {
-    if (!map) {
-      console.log('[OverlayRenderer] Effect: no map yet');
+    if (!map) return;
+    
+    // During active drag, only update coordinates — don't rebuild layers
+    if (isDraggingRef.current) {
+      overlays.forEach(o => {
+        if (!hiddenOverlayIds.has(o.id) && o.imageUrl) {
+          updateOverlayCoordinates(o);
+        }
+      });
       return;
     }
     
-    console.log(`[OverlayRenderer] Effect running: ${overlays.length} overlays, ${hiddenOverlayIds.size} hidden`);
-    overlays.forEach(o => console.log(`  → overlay "${o.name}" id=${o.id} imageUrl=${o.imageUrl ? `yes (${o.imageUrl.length} chars)` : 'NO'} hidden=${hiddenOverlayIds.has(o.id)}`));
-    
     const setupLayers = () => {
-      console.log(`[OverlayRenderer] setupLayers() called`);
-      // Get all overlay IDs currently in the data
       const allOverlayIds = new Set(overlays.map(o => o.id));
-      
-      // Get IDs of overlays that should be rendered (visible + have image)
       const visibleOverlays = overlays.filter(o => 
         !hiddenOverlayIds.has(o.id) && o.imageUrl
       );
-      console.log(`[OverlayRenderer] visibleOverlays: ${visibleOverlays.length}`);
       const visibleIds = new Set(visibleOverlays.map(o => o.id));
       
-      // Remove overlays that are either:
-      // 1. No longer in the overlays array (deleted)
-      // 2. Hidden or missing imageUrl
+      // Remove deleted or hidden overlays
       renderedOverlayIdsRef.current.forEach(id => {
         if (!allOverlayIds.has(id) || !visibleIds.has(id)) {
           removeOverlayLayer(id);
@@ -376,24 +373,12 @@ export function useMultiOverlayRenderer({
         updateOverlayLayer(overlay);
       });
       
-      // Diagnostic: warn about overlays with bounds but no image
-      overlays.forEach(overlay => {
-        const { north, south, east, west } = overlay.boundingBox;
-        if (north > south && east > west && !overlay.imageUrl) {
-          console.warn(`[Overlay "${overlay.name}" (${overlay.id})]: has valid bounds but missing imageUrl — re-upload the image.`);
-        }
-      });
-      
-      // Force repaint after layer changes
       map.triggerRepaint();
     };
     
-    // Always try to set up layers immediately — isStyleLoaded() can return false
-    // in Mapbox v3 while tiles are loading, even though the style object is ready.
     try {
       setupLayers();
     } catch (e) {
-      console.warn('[OverlayRenderer] setupLayers failed, will retry on style.load', e);
       map.once('style.load', setupLayers);
     }
     
@@ -405,10 +390,9 @@ export function useMultiOverlayRenderer({
 
     return () => {
       map.off('style.load', handleStyleLoad);
-      // Also remove the once listener to prevent stale closure
       map.off('style.load', setupLayers);
     };
-  }, [map, overlays, hiddenOverlayIds, updateOverlayLayer, removeOverlayLayer]);
+  }, [map, overlays, hiddenOverlayIds, updateOverlayLayer, removeOverlayLayer, updateOverlayCoordinates]);
 
   // Effect: Update ghost layer
   useEffect(() => {
