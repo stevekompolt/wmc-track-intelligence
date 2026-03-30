@@ -70,20 +70,31 @@ export function useMultiOverlayRenderer({
   const onDragEndRef = useRef(onDragEnd);
   onDragEndRef.current = onDragEnd;
 
+  // Update just the source coordinates for an overlay (fast path for drag)
+  const updateOverlayCoordinates = useCallback((overlay: MapOverlay) => {
+    if (!map) return;
+    const { north, south, east, west } = overlay.boundingBox;
+    if (north <= south || east <= west) return;
+    
+    const sourceId = getSourceId(overlay.id);
+    const source = map.getSource(sourceId) as mapboxgl.ImageSource;
+    if (source) {
+      (source as any).setCoordinates([
+        [west, north],
+        [east, north],
+        [east, south],
+        [west, south],
+      ]);
+      map.triggerRepaint();
+    }
+  }, [map]);
+
   // Add/update a single overlay
   const updateOverlayLayer = useCallback((overlay: MapOverlay) => {
-    if (!map || !overlay.imageUrl) {
-      console.warn(`[OverlayRenderer] Skipping overlay "${overlay.name}": map=${!!map}, imageUrl=${!!overlay.imageUrl} (len=${overlay.imageUrl?.length || 0})`);
-      return;
-    }
+    if (!map || !overlay.imageUrl) return;
 
     const { north, south, east, west } = overlay.boundingBox;
-    const hasValidBounds = north > south && east > west;
-    
-    if (!hasValidBounds) {
-      console.warn(`[OverlayRenderer] Skipping overlay "${overlay.name}": invalid bounds`, overlay.boundingBox);
-      return;
-    }
+    if (north <= south || east <= west) return;
 
     const sourceId = getSourceId(overlay.id);
     const layerId = getLayerId(overlay.id);
@@ -96,7 +107,6 @@ export function useMultiOverlayRenderer({
     ];
 
     const imageUrl = dataUrlToBlobUrl(overlay.imageUrl);
-    console.log(`[OverlayRenderer] Rendering overlay "${overlay.name}" — blobUrl=${imageUrl.substring(0, 60)}... bounds=`, { north, south, east, west });
     const source = map.getSource(sourceId) as mapboxgl.ImageSource;
     
     if (source) {
