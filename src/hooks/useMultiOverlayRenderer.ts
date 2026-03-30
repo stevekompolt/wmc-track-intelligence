@@ -10,12 +10,12 @@ interface UseMultiOverlayRendererOptions {
   map: mapboxgl.Map | null;
   overlays: MapOverlay[];
   hiddenOverlayIds: Set<string>;
-  // For editor mode - editing a specific overlay
   editingOverlayId?: string | null;
   dragMode?: 'none' | 'corners' | 'move';
   ghostBounds?: BoundingBox | null;
   onCornerDrag?: (corner: CornerHandle, lat: number, lng: number) => void;
   onMoveDrag?: (deltaLat: number, deltaLng: number) => void;
+  onDragEnd?: () => void;
 }
 
 const CORNER_MARKER_STYLE = `
