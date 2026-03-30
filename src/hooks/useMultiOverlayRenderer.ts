@@ -228,6 +228,7 @@ export function useMultiOverlayRenderer({
 
     marker.on('dragend', () => {
       isDraggingRef.current = false;
+      onDragEndRef.current?.();
     });
 
     return marker;
