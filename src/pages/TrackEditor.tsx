@@ -236,6 +236,7 @@ export default function TrackEditor() {
     ghostBounds: overlayGhostBounds,
     onCornerDrag: handleCornerDrag,
     onMoveDrag: handleMoveDrag,
+    onDragEnd: handleDragEnd,
   });
 
   // Initialize feature renderer
