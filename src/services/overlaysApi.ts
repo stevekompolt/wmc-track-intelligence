@@ -78,8 +78,6 @@ export const updateOverlay = async (
   overlayId: string,
   updates: Partial<Omit<MapOverlay, 'id' | 'venueId' | 'createdAt'>>
 ): Promise<MapOverlay | null> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
   const allOverlays = loadOverlays();
   const index = allOverlays.findIndex(o => o.id === overlayId);
   
