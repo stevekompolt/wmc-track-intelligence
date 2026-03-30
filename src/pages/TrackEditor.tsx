@@ -307,6 +307,18 @@ export default function TrackEditor() {
     handleSelectItem(null, null);
   }, [featureContext, overlayContext, handleSelectItem]);
 
+  // Handle reorder from drag-and-drop
+  const handleReorderItems = useCallback((reorderedItems: MapItem[]) => {
+    reorderedItems.forEach((item, index) => {
+      const newZOrder = index + 1;
+      if (item.type === 'feature') {
+        featureContext.updateStyle(item.data.id, { zOrder: newZOrder } as any);
+      } else {
+        overlayContext.updateOverlay(item.data.id, { zOrder: newZOrder });
+      }
+    });
+  }, [featureContext, overlayContext]);
+
   // Get current drawing instruction
   const drawingInstruction = featureDrawing.mode !== 'none' ? DRAWING_INSTRUCTIONS[featureDrawing.mode] : null;
 
