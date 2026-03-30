@@ -35,6 +35,11 @@ interface OverlayContextType {
   updateOverlay: (overlayId: string, updates: Partial<MapOverlay>) => Promise<void>;
   deleteOverlay: (overlayId: string) => Promise<void>;
   
+  // Local-only update (no persistence) for drag operations
+  updateOverlayLocal: (overlayId: string, updates: Partial<MapOverlay>) => void;
+  // Persist current state to storage (call on drag end)
+  commitOverlay: (overlayId: string) => Promise<void>;
+  
   // Convenience updates
   updateName: (overlayId: string, name: string) => Promise<void>;
   updateDescription: (overlayId: string, description: string) => Promise<void>;
