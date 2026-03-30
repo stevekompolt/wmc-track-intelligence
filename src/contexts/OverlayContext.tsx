@@ -35,6 +35,11 @@ interface OverlayContextType {
   updateOverlay: (overlayId: string, updates: Partial<MapOverlay>) => Promise<void>;
   deleteOverlay: (overlayId: string) => Promise<void>;
   
+  // Local-only update (no persistence) for drag operations
+  updateOverlayLocal: (overlayId: string, updates: Partial<MapOverlay>) => void;
+  // Persist current state to storage (call on drag end)
+  commitOverlay: (overlayId: string) => Promise<void>;
+  
   // Convenience updates
   updateName: (overlayId: string, name: string) => Promise<void>;
   updateDescription: (overlayId: string, description: string) => Promise<void>;
@@ -256,6 +261,24 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     await updateOverlay(overlayId, { isLocked: !overlay.isLocked });
   }, [overlays, updateOverlay]);
 
+  // Local-only update — synchronous, no API call
+  const updateOverlayLocal = useCallback((overlayId: string, updates: Partial<MapOverlay>) => {
+    setOverlays(prev =>
+      prev.map(o => o.id === overlayId ? { ...o, ...updates } : o)
+    );
+  }, []);
+
+  // Persist current in-memory state to storage
+  const commitOverlay = useCallback(async (overlayId: string) => {
+    const overlay = overlays.find(o => o.id === overlayId);
+    if (!overlay) return;
+    try {
+      await overlaysApi.updateOverlay(overlayId, overlay);
+    } catch (err) {
+      console.error('Failed to commit overlay:', err);
+    }
+  }, [overlays]);
+
   const refreshOverlays = useCallback(async () => {
     await loadOverlays();
   }, [loadOverlays]);
@@ -275,6 +298,8 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
         createOverlay,
         updateOverlay,
         deleteOverlay,
+        updateOverlayLocal,
+        commitOverlay,
         updateName,
         updateDescription,
         updateBoundingBox,

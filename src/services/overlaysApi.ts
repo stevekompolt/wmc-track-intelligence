@@ -34,14 +34,12 @@ const saveOverlays = (overlays: MapOverlay[]): boolean => {
 
 // Get all overlays for a venue
 export const getOverlaysByVenue = async (venueId: string): Promise<MapOverlay[]> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
   const allOverlays = loadOverlays();
   return allOverlays.filter(o => o.venueId === venueId);
 };
 
 // Get a single overlay by ID
 export const getOverlayById = async (overlayId: string): Promise<MapOverlay | null> => {
-  await new Promise(resolve => setTimeout(resolve, 50));
   const allOverlays = loadOverlays();
   return allOverlays.find(o => o.id === overlayId) || null;
 };
@@ -51,8 +49,6 @@ export const createOverlay = async (
   venueId: string,
   name?: string
 ): Promise<MapOverlay> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
   const allOverlays = loadOverlays();
   const venueOverlays = allOverlays.filter(o => o.venueId === venueId);
   const maxZOrder = venueOverlays.reduce((max, o) => Math.max(max, o.zOrder), 0);
@@ -80,8 +76,6 @@ export const updateOverlay = async (
   overlayId: string,
   updates: Partial<Omit<MapOverlay, 'id' | 'venueId' | 'createdAt'>>
 ): Promise<MapOverlay | null> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
   const allOverlays = loadOverlays();
   const index = allOverlays.findIndex(o => o.id === overlayId);
   
@@ -115,8 +109,6 @@ export const updateOverlay = async (
 
 // Delete an overlay
 export const deleteOverlay = async (overlayId: string): Promise<boolean> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
   const allOverlays = loadOverlays();
   const index = allOverlays.findIndex(o => o.id === overlayId);
   
