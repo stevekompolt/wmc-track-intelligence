@@ -17,7 +17,12 @@ import { useViewpointContext } from '@/contexts/ViewpointContext';
 import { getViewpointIcon } from '@/lib/viewpointIcons';
 import { cn } from '@/lib/utils';
 
-export function ViewpointManagerPanel() {
+interface ViewpointManagerPanelProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function ViewpointManagerPanel({ open: controlledOpen, onOpenChange }: ViewpointManagerPanelProps = {}) {
   const {
     viewpoints,
     activeViewpoint,
