@@ -40,7 +40,6 @@ export const getOverlaysByVenue = async (venueId: string): Promise<MapOverlay[]>
 
 // Get a single overlay by ID
 export const getOverlayById = async (overlayId: string): Promise<MapOverlay | null> => {
-  await new Promise(resolve => setTimeout(resolve, 50));
   const allOverlays = loadOverlays();
   return allOverlays.find(o => o.id === overlayId) || null;
 };
