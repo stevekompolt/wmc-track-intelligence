@@ -53,6 +53,7 @@ export function useMultiOverlayRenderer({
   ghostBounds,
   onCornerDrag,
   onMoveDrag,
+  onDragEnd,
 }: UseMultiOverlayRendererOptions) {
   const markersRef = useRef<globalThis.Map<string, Marker>>(new globalThis.Map());
   const renderedOverlayIdsRef = useRef<Set<string>>(new Set());
