@@ -125,22 +125,31 @@ export function MapItemList({
     <>
       <ScrollArea className="h-[200px]">
         <div className="p-1">
-          {items.map((item) => {
+          {items.map((item, index) => {
             const isHidden = hiddenItemIds.has(item.data.id);
             const isSelected = selectedItemId === item.data.id && selectedItemType === item.type;
             const status = getItemStatus(item);
+            const isDragOver = dragOverIndex === index;
             
             return (
               <div
                 key={`${item.type}-${item.data.id}`}
+                draggable={!!onReorder}
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
                 className={cn(
                   "w-full flex items-center gap-2 px-2 py-1.5 rounded transition-colors",
                   isSelected
                     ? "bg-primary/10 border border-primary/30"
                     : "hover:bg-muted/50 border border-transparent",
-                  isHidden && "opacity-50"
+                  isHidden && "opacity-50",
+                  isDragOver && "border-t-2 border-t-primary"
                 )}
               >
+                {onReorder && (
+                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground cursor-grab shrink-0" />
+                )}
                 <button
                   onClick={() => onSelectItem(item.data.id, item.type)}
                   className="flex-1 flex items-center gap-2 text-left min-w-0"
