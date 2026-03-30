@@ -298,6 +298,8 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
         createOverlay,
         updateOverlay,
         deleteOverlay,
+        updateOverlayLocal,
+        commitOverlay,
         updateName,
         updateDescription,
         updateBoundingBox,
