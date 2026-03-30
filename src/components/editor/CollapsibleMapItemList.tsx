@@ -45,6 +45,7 @@ export function CollapsibleMapItemList({
   onToggleFeatureVisibility,
   onToggleOverlayVisibility,
   onDeleteItem,
+  onReorderItems,
 }: CollapsibleMapItemListProps) {
   const [isOpen, setIsOpen] = useState(true);
 
