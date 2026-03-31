@@ -38,8 +38,9 @@ interface ViewpointContextValue {
   removeViewpoint: (id: string) => Promise<void>;
   captureCamera: () => CameraState | null;
   
-  // Map ref (works for both engines via same interface)
+  // Map refs (both engines)
   mapRef: React.RefObject<TrackMapRef>;
+  cesiumMapRef: React.RefObject<TrackMapRef>;
   
   // Current mode
   currentMode: AppMode;
