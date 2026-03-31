@@ -133,6 +133,7 @@ export function ViewpointProvider({ children }: { children: React.ReactNode }) {
     removeViewpoint,
     captureCamera,
     mapRef,
+    cesiumMapRef,
     currentMode,
   };
 

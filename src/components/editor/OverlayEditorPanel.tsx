@@ -463,100 +463,66 @@ export function OverlayEditorPanel({
 
         <Separator />
 
-        {/* Section 6: Advanced Placement (Collapsible) */}
-        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-full justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Advanced Placement
-              </span>
-              {advancedOpen ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-3 pt-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">North</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  value={formatCoordinate(overlay.boundingBox.north)}
-                  onChange={(e) => onUpdateBoundingBox({ north: parseFloat(e.target.value) || 0 })}
-                  className="text-xs font-mono"
-                  disabled={overlay.isLocked}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">South</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  value={formatCoordinate(overlay.boundingBox.south)}
-                  onChange={(e) => onUpdateBoundingBox({ south: parseFloat(e.target.value) || 0 })}
-                  className="text-xs font-mono"
-                  disabled={overlay.isLocked}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">East</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  value={formatCoordinate(overlay.boundingBox.east)}
-                  onChange={(e) => onUpdateBoundingBox({ east: parseFloat(e.target.value) || 0 })}
-                  className="text-xs font-mono"
-                  disabled={overlay.isLocked}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">West</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  value={formatCoordinate(overlay.boundingBox.west)}
-                  onChange={(e) => onUpdateBoundingBox({ west: parseFloat(e.target.value) || 0 })}
-                  className="text-xs font-mono"
-                  disabled={overlay.isLocked}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="flex-1"
-                onClick={onCenterOnVenue}
+        {/* Section 6: Bounding Box Coordinates */}
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Coordinates
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">North</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={getCoordValue('north', overlay.boundingBox.north)}
+                onFocus={() => handleCoordFocus('north', overlay.boundingBox.north)}
+                onChange={(e) => handleCoordChange('north', e.target.value)}
+                onBlur={() => handleCoordBlur('north')}
+                className="text-xs font-mono"
                 disabled={overlay.isLocked}
-              >
-                <Crosshair className="h-3 w-3 mr-1" />
-                Center
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="flex-1"
-                onClick={onFitToVenueBounds}
-                disabled={overlay.isLocked}
-              >
-                <Maximize2 className="h-3 w-3 mr-1" />
-                Fit
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={onResetPlacement}
-                disabled={overlay.isLocked || !canUndo}
-              >
-                <RotateCcw className="h-3 w-3" />
-              </Button>
+              />
             </div>
-          </CollapsibleContent>
-        </Collapsible>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">South</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={getCoordValue('south', overlay.boundingBox.south)}
+                onFocus={() => handleCoordFocus('south', overlay.boundingBox.south)}
+                onChange={(e) => handleCoordChange('south', e.target.value)}
+                onBlur={() => handleCoordBlur('south')}
+                className="text-xs font-mono"
+                disabled={overlay.isLocked}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">East</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={getCoordValue('east', overlay.boundingBox.east)}
+                onFocus={() => handleCoordFocus('east', overlay.boundingBox.east)}
+                onChange={(e) => handleCoordChange('east', e.target.value)}
+                onBlur={() => handleCoordBlur('east')}
+                className="text-xs font-mono"
+                disabled={overlay.isLocked}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">West</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={getCoordValue('west', overlay.boundingBox.west)}
+                onFocus={() => handleCoordFocus('west', overlay.boundingBox.west)}
+                onChange={(e) => handleCoordChange('west', e.target.value)}
+                onBlur={() => handleCoordBlur('west')}
+                className="text-xs font-mono"
+                disabled={overlay.isLocked}
+              />
+            </div>
+          </div>
+        </section>
 
         <Separator />
 
