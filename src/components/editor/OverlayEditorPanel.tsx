@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
 import { cn } from '@/lib/utils';
 import { SnapSourceSelector } from './SnapSourceSelector';
 import type { MapOverlay, BoundingBox, OverlayStatus, SnapSource } from '@/types/overlay';
