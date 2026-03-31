@@ -132,7 +132,33 @@ export function OverlayEditorPanel({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Local state for coordinate editing to prevent format-fighting
+  const [editingCoord, setEditingCoord] = useState<{ field: string; value: string } | null>(null);
+
   const formatCoordinate = (value: number) => value.toFixed(6);
+
+  const handleCoordFocus = (field: string, value: number) => {
+    setEditingCoord({ field, value: value.toString() });
+  };
+
+  const handleCoordChange = (field: string, rawValue: string) => {
+    setEditingCoord({ field, value: rawValue });
+  };
+
+  const handleCoordBlur = (field: string) => {
+    if (editingCoord?.field === field) {
+      const parsed = parseFloat(editingCoord.value);
+      if (!isNaN(parsed)) {
+        onUpdateBoundingBox({ [field]: parsed });
+      }
+      setEditingCoord(null);
+    }
+  };
+
+  const getCoordValue = (field: string, value: number): string => {
+    if (editingCoord?.field === field) return editingCoord.value;
+    return formatCoordinate(value);
+  };
 
   if (!overlay) {
     return (
