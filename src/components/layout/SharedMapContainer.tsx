@@ -57,7 +57,7 @@ export function SharedMapContainer() {
   useEffect(() => {
     if (engine !== 'cesium') { setCesiumViewer(null); return; }
     const check = () => {
-      const v = cesiumRef.current?.getViewer?.() as Viewer | null;
+      const v = (cesiumMapRef.current as any)?.getViewer?.() as Viewer | null;
       if (v) setCesiumViewer(v);
     };
     check();
