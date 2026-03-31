@@ -96,7 +96,7 @@ export function OverlayEditorPanel({
   onResetToFree,
 }: OverlayEditorPanelProps) {
   const [copied, setCopied] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
