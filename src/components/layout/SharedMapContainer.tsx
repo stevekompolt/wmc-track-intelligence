@@ -31,16 +31,15 @@ export function SharedMapContainer() {
 
   // Synchronous capture-then-switch to avoid race condition
   const handleEngineSwitch = useCallback((newEngine: MapEngine) => {
-    // Capture from the CURRENT engine before unmounting it
     if (engine === 'mapbox') {
       const cam = mapRef.current?.captureCamera?.();
       if (cam) savedCameraRef.current = cam;
     } else {
-      const cam = cesiumRef.current?.captureCamera?.();
+      const cam = cesiumMapRef.current?.captureCamera?.();
       if (cam) savedCameraRef.current = cam;
     }
     setEngine(newEngine);
-  }, [engine, mapRef, setEngine]);
+  }, [engine, mapRef, cesiumMapRef, setEngine]);
 
   // Get Mapbox instance
   useEffect(() => {
