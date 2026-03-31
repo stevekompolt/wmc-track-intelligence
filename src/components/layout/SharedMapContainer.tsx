@@ -112,7 +112,7 @@ export function SharedMapContainer() {
         />
       ) : (
         <CesiumMap
-          ref={cesiumRef}
+          ref={cesiumMapRef as React.RefObject<CesiumMapHandle>}
           trackName={selectedTrack.name}
           latitude={selectedTrack.latitude}
           longitude={selectedTrack.longitude}
