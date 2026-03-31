@@ -18,7 +18,7 @@ import mapboxgl from 'mapbox-gl';
 
 export function SharedMapContainer() {
   const { selectedTrack } = useTrackContext();
-  const { mapRef, engine, setEngine } = useViewpointContext();
+  const { mapRef, cesiumMapRef, engine, setEngine } = useViewpointContext();
   type MapEngine = typeof engine;
   const { visibleFeatures, currentMode } = useFeatureContext();
   const { visibleOverlays } = useOverlayContext();
@@ -28,20 +28,18 @@ export function SharedMapContainer() {
 
   // Camera state to preserve when switching engines
   const savedCameraRef = useRef<CameraState | null>(null);
-  const cesiumRef = useRef<CesiumMapHandle>(null);
 
   // Synchronous capture-then-switch to avoid race condition
   const handleEngineSwitch = useCallback((newEngine: MapEngine) => {
-    // Capture from the CURRENT engine before unmounting it
     if (engine === 'mapbox') {
       const cam = mapRef.current?.captureCamera?.();
       if (cam) savedCameraRef.current = cam;
     } else {
-      const cam = cesiumRef.current?.captureCamera?.();
+      const cam = cesiumMapRef.current?.captureCamera?.();
       if (cam) savedCameraRef.current = cam;
     }
     setEngine(newEngine);
-  }, [engine, mapRef, setEngine]);
+  }, [engine, mapRef, cesiumMapRef, setEngine]);
 
   // Get Mapbox instance
   useEffect(() => {
@@ -59,7 +57,7 @@ export function SharedMapContainer() {
   useEffect(() => {
     if (engine !== 'cesium') { setCesiumViewer(null); return; }
     const check = () => {
-      const v = cesiumRef.current?.getViewer?.() as Viewer | null;
+      const v = (cesiumMapRef.current as any)?.getViewer?.() as Viewer | null;
       if (v) setCesiumViewer(v);
     };
     check();
@@ -114,7 +112,7 @@ export function SharedMapContainer() {
         />
       ) : (
         <CesiumMap
-          ref={cesiumRef}
+          ref={cesiumMapRef as React.RefObject<CesiumMapHandle>}
           trackName={selectedTrack.name}
           latitude={selectedTrack.latitude}
           longitude={selectedTrack.longitude}
