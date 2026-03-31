@@ -52,6 +52,7 @@ export function ViewpointProvider({ children }: { children: React.ReactNode }) {
   const { selectedTrack } = useTrackContext();
   const currentMode = useCurrentMode();
   const mapRef = useRef<TrackMapRef>(null);
+  const cesiumMapRef = useRef<TrackMapRef>(null);
   const [activeViewpoint, setActiveViewpointState] = useState<Viewpoint | null>(null);
   const [editingViewpoint, setEditingViewpoint] = useState<Viewpoint | null>(null);
   const [engine, setEngine] = useState<MapEngine>('mapbox');
