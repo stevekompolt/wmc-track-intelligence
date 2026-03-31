@@ -18,7 +18,7 @@ import mapboxgl from 'mapbox-gl';
 
 export function SharedMapContainer() {
   const { selectedTrack } = useTrackContext();
-  const { mapRef, engine, setEngine } = useViewpointContext();
+  const { mapRef, cesiumMapRef, engine, setEngine } = useViewpointContext();
   type MapEngine = typeof engine;
   const { visibleFeatures, currentMode } = useFeatureContext();
   const { visibleOverlays } = useOverlayContext();
@@ -28,7 +28,6 @@ export function SharedMapContainer() {
 
   // Camera state to preserve when switching engines
   const savedCameraRef = useRef<CameraState | null>(null);
-  const cesiumRef = useRef<CesiumMapHandle>(null);
 
   // Synchronous capture-then-switch to avoid race condition
   const handleEngineSwitch = useCallback((newEngine: MapEngine) => {
