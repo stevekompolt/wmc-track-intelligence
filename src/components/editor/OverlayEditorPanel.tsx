@@ -5,8 +5,6 @@ import {
   Copy, 
   Check, 
   RotateCcw, 
-  Crosshair, 
-  Maximize2,
   Move,
   GripHorizontal,
   Lock,
@@ -14,9 +12,7 @@ import {
   Save,
   Undo2,
   Layers,
-  ChevronDown,
   Trash2,
-  ChevronRight,
   AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
