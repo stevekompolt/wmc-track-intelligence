@@ -79,16 +79,19 @@ export function ViewpointProvider({ children }: { children: React.ReactNode }) {
   // Set active viewpoint and fly to it
   const setActiveViewpoint = useCallback((viewpoint: Viewpoint | null) => {
     setActiveViewpointState(viewpoint);
-    if (viewpoint && mapRef.current) {
-      mapRef.current.flyToViewpoint(viewpoint);
+    if (viewpoint) {
+      const activeRef = engine === 'cesium' ? cesiumMapRef.current : mapRef.current;
+      if (activeRef) activeRef.flyToViewpoint(viewpoint);
     }
-  }, []);
+  }, [engine]);
   
-  // Capture current camera state
+  // Capture current camera state from active engine
   const captureCamera = useCallback((): CameraState | null => {
-    if (!mapRef.current) return null;
-    return mapRef.current.captureCamera();
-  }, []);
+    if (engine === 'cesium') {
+      return cesiumMapRef.current?.captureCamera() ?? null;
+    }
+    return mapRef.current?.captureCamera() ?? null;
+  }, [engine]);
   
   // Save a new viewpoint
   const saveViewpoint = useCallback(async (data: ViewpointFormData) => {
