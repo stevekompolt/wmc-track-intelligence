@@ -76,8 +76,7 @@ export default function Dashboard() {
             const isAccessible = canAccessView(user?.role, card.view);
             const Icon = card.icon;
 
-            return (
-              {isAccessible ? (
+            return isAccessible ? (
                 <Link key={card.id} to={card.path} className="block">
                   <Card className="relative overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 cursor-pointer">
                     <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
@@ -114,8 +113,7 @@ export default function Dashboard() {
                     <p className="text-xs text-muted-foreground font-mono">Contact admin for access</p>
                   </CardContent>
                 </Card>
-              )}
-            );
+              );
           })}
         </div>
 
