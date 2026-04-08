@@ -77,48 +77,44 @@ export default function Dashboard() {
             const Icon = card.icon;
 
             return (
-              <Card
-                key={card.id}
-                className={`relative overflow-hidden transition-all ${
-                  isAccessible
-                    ? 'hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 cursor-pointer'
-                    : 'opacity-50 cursor-not-allowed'
-                }`}
-              >
-                {/* Gradient accent */}
-                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-                
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className={`p-2 rounded-md bg-secondary ${card.color}`}>
-                      <Icon className="h-5 w-5" />
+              {isAccessible ? (
+                <Link key={card.id} to={card.path} className="block">
+                  <Card className="relative overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 cursor-pointer">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <div className={`p-2 rounded-md bg-secondary ${card.color}`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                      </div>
+                      <CardTitle className="font-display text-lg tracking-wide">{card.title}</CardTitle>
+                      <CardDescription>{card.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                        Open View <ArrowRight className="h-4 w-4" />
+                      </span>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ) : (
+                <Card key={card.id} className="relative overflow-hidden opacity-50 cursor-not-allowed">
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className={`p-2 rounded-md bg-secondary ${card.color}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <Badge variant="secondary" className="text-xs">No Access</Badge>
                     </div>
-                    {!isAccessible && (
-                      <Badge variant="secondary" className="text-xs">
-                        No Access
-                      </Badge>
-                    )}
-                  </div>
-                  <CardTitle className="font-display text-lg tracking-wide">
-                    {card.title}
-                  </CardTitle>
-                  <CardDescription>{card.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {isAccessible ? (
-                    <Link to={card.path}>
-                      <Button variant="ghost" size="sm" className="gap-2 -ml-2">
-                        Open View
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </Link>
-                  ) : (
-                    <p className="text-xs text-muted-foreground font-mono">
-                      Contact admin for access
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+                    <CardTitle className="font-display text-lg tracking-wide">{card.title}</CardTitle>
+                    <CardDescription>{card.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground font-mono">Contact admin for access</p>
+                  </CardContent>
+                </Card>
+              )}
             );
           })}
         </div>
