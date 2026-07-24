@@ -24,6 +24,32 @@ interface SchemaEntry {
   fetched_at: string;
 }
 
+interface LastAttempt {
+  at: string;
+  authorizeUrl?: string;
+  callbackParams?: Record<string, string>;
+  callbackAt?: string;
+  connectError?: string;
+}
+
+const LS_KEY = "wmc_sf_last_attempt";
+
+function readLastAttempt(): LastAttempt | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastAttempt(patch: Partial<LastAttempt>) {
+  const prev = readLastAttempt() || { at: new Date().toISOString() };
+  const next = { ...prev, ...patch };
+  localStorage.setItem(LS_KEY, JSON.stringify(next));
+  return next;
+}
+
 export default function SalesforceIntegration() {
   const { user } = useAuth();
   const isAdmin = user?.role === "wmc_admin";
@@ -34,6 +60,7 @@ export default function SalesforceIntegration() {
   const [schema, setSchema] = useState<SchemaEntry[]>([]);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<SchemaEntry | null>(null);
+  const [lastAttempt, setLastAttempt] = useState<LastAttempt | null>(() => readLastAttempt());
 
   const refresh = async () => {
     setLoading(true);
@@ -52,6 +79,14 @@ export default function SalesforceIntegration() {
     const params = new URLSearchParams(window.location.search);
     const sf = params.get("sf");
     if (!sf) return;
+    const captured: Record<string, string> = {};
+    ["sf", "org", "stage", "reason", "desc"].forEach((k) => {
+      const v = params.get(k);
+      if (v) captured[k] = v;
+    });
+    setLastAttempt(
+      writeLastAttempt({ callbackParams: captured, callbackAt: new Date().toISOString() }),
+    );
     if (sf === "connected") {
       toast({ title: "Salesforce connected", description: params.get("org") || "" });
     } else if (sf === "error") {
@@ -74,9 +109,25 @@ export default function SalesforceIntegration() {
     );
     setBusy(null);
     if (error || !data?.authorizeUrl) {
+      setLastAttempt(
+        writeLastAttempt({
+          at: new Date().toISOString(),
+          connectError: error || "no_authorize_url",
+          authorizeUrl: undefined,
+        }),
+      );
       toast({ title: "Could not start OAuth", description: error || "Unknown error", variant: "destructive" });
       return;
     }
+    setLastAttempt(
+      writeLastAttempt({
+        at: new Date().toISOString(),
+        authorizeUrl: data.authorizeUrl,
+        connectError: undefined,
+        callbackParams: undefined,
+        callbackAt: undefined,
+      }),
+    );
     window.location.href = data.authorizeUrl;
   };
 
