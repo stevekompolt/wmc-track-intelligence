@@ -20,6 +20,7 @@ import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Utah2026 from "./pages/Utah2026";
 import PublicExperience from "./pages/PublicExperience";
+import SalesforceIntegration from "./pages/SalesforceIntegration";
 
 const queryClient = new QueryClient();
 
@@ -90,6 +91,14 @@ const App = () => (
                 element={
                   <ProtectedRoute requiredView="settings">
                     <Settings />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings/salesforce"
+                element={
+                  <ProtectedRoute requiredView="settings">
+                    <SalesforceIntegration />
                   </ProtectedRoute>
                 }
               />
