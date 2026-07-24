@@ -1,12 +1,21 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings as SettingsIcon, Database, Users, Key, Server, Shield } from 'lucide-react';
+import { Settings as SettingsIcon, Database, Users, Key, Server, Shield, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_ACCESS } from '@/types/auth';
+import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { getSalesforceStatus, type ConnectedServiceStatus } from '@/services/salesforceAdminApi';
 
 export default function Settings() {
   const { user } = useAuth();
   const roleConfig = user?.role ? ROLE_ACCESS[user.role] : null;
+  const [sfStatus, setSfStatus] = useState<ConnectedServiceStatus | null>(null);
+
+  useEffect(() => {
+    getSalesforceStatus().then(setSfStatus);
+  }, []);
+  const sfConnected = sfStatus?.status === 'connected';
 
   return (
     <div className="h-full overflow-auto p-6">
@@ -30,23 +39,29 @@ export default function Settings() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Card>
+          <Link to="/settings/salesforce" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-lg">
+          <Card className="hover:border-primary/40 transition-colors cursor-pointer h-full">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <Server className="h-5 w-5 text-muted-foreground" />
                 <CardTitle className="text-lg font-display">Salesforce Integration</CardTitle>
+                <ArrowRight className="h-4 w-4 ml-auto text-muted-foreground" />
               </div>
-              <CardDescription>SFDC endpoint configuration</CardDescription>
+              <CardDescription>OAuth-connected Salesforce org (admin-managed)</CardDescription>
             </CardHeader>
             <CardContent>
-              <Badge variant="outline" className="text-xs border-status-caution/50 text-status-caution">
-                Mock Mode
+              <Badge
+                variant="outline"
+                className={`text-xs ${sfConnected ? 'border-emerald-500/50 text-emerald-400' : 'border-status-caution/50 text-status-caution'}`}
+              >
+                {sfConnected ? 'Connected' : 'Not connected'}
               </Badge>
-              <p className="text-xs text-muted-foreground mt-2 font-mono">
-                Configure SFDC endpoints for production
+              <p className="text-xs text-muted-foreground mt-2 font-mono truncate">
+                {sfConnected ? sfStatus?.org_name || sfStatus?.org_id : 'Click to manage connection'}
               </p>
             </CardContent>
           </Card>
+          </Link>
 
           <Card>
             <CardHeader className="pb-2">
