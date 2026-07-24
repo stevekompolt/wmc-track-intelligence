@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     authorizeUrl.searchParams.set("response_type", "code");
     authorizeUrl.searchParams.set("client_id", clientId);
     authorizeUrl.searchParams.set("redirect_uri", sfRedirectUri());
-    authorizeUrl.searchParams.set("scope", "api refresh_token offline_access id");
+    authorizeUrl.searchParams.set("scope", "api refresh_token offline_access");
     authorizeUrl.searchParams.set("state", state);
     authorizeUrl.searchParams.set("code_challenge", codeChallenge);
     authorizeUrl.searchParams.set("code_challenge_method", "S256");
