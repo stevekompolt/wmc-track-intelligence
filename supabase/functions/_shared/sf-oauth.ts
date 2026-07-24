@@ -5,7 +5,8 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 export function sfLoginUrl(): string {
-  return Deno.env.get("SALESFORCE_LOGIN_URL") || "https://login.salesforce.com";
+  const raw = Deno.env.get("SALESFORCE_LOGIN_URL") || "https://login.salesforce.com";
+  return raw.replace(/\/+$/, "");
 }
 
 export function sfRedirectUri(): string {
