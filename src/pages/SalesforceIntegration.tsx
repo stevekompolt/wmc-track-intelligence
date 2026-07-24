@@ -24,6 +24,32 @@ interface SchemaEntry {
   fetched_at: string;
 }
 
+interface LastAttempt {
+  at: string;
+  authorizeUrl?: string;
+  callbackParams?: Record<string, string>;
+  callbackAt?: string;
+  connectError?: string;
+}
+
+const LS_KEY = "wmc_sf_last_attempt";
+
+function readLastAttempt(): LastAttempt | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastAttempt(patch: Partial<LastAttempt>) {
+  const prev = readLastAttempt() || { at: new Date().toISOString() };
+  const next = { ...prev, ...patch };
+  localStorage.setItem(LS_KEY, JSON.stringify(next));
+  return next;
+}
+
 export default function SalesforceIntegration() {
   const { user } = useAuth();
   const isAdmin = user?.role === "wmc_admin";
@@ -34,6 +60,7 @@ export default function SalesforceIntegration() {
   const [schema, setSchema] = useState<SchemaEntry[]>([]);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<SchemaEntry | null>(null);
+  const [lastAttempt, setLastAttempt] = useState<LastAttempt | null>(() => readLastAttempt());
 
   const refresh = async () => {
     setLoading(true);
@@ -52,6 +79,14 @@ export default function SalesforceIntegration() {
     const params = new URLSearchParams(window.location.search);
     const sf = params.get("sf");
     if (!sf) return;
+    const captured: Record<string, string> = {};
+    ["sf", "org", "stage", "reason", "desc"].forEach((k) => {
+      const v = params.get(k);
+      if (v) captured[k] = v;
+    });
+    setLastAttempt(
+      writeLastAttempt({ callbackParams: captured, callbackAt: new Date().toISOString() }),
+    );
     if (sf === "connected") {
       toast({ title: "Salesforce connected", description: params.get("org") || "" });
     } else if (sf === "error") {
@@ -74,9 +109,25 @@ export default function SalesforceIntegration() {
     );
     setBusy(null);
     if (error || !data?.authorizeUrl) {
+      setLastAttempt(
+        writeLastAttempt({
+          at: new Date().toISOString(),
+          connectError: error || "no_authorize_url",
+          authorizeUrl: undefined,
+        }),
+      );
       toast({ title: "Could not start OAuth", description: error || "Unknown error", variant: "destructive" });
       return;
     }
+    setLastAttempt(
+      writeLastAttempt({
+        at: new Date().toISOString(),
+        authorizeUrl: data.authorizeUrl,
+        connectError: undefined,
+        callbackParams: undefined,
+        callbackAt: undefined,
+      }),
+    );
     window.location.href = data.authorizeUrl;
   };
 
@@ -220,6 +271,82 @@ export default function SalesforceIntegration() {
                     Disconnect
                   </Button>
                 </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-lg">Debug — Connection state & last attempt</CardTitle>
+            <CardDescription>
+              Live view of what the backend reports and the most recent OAuth start / callback params.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
+                connected_services row
+              </div>
+              <pre className="text-xs font-mono bg-muted/40 rounded p-3 overflow-auto max-h-64">
+{JSON.stringify(status, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1 flex items-center justify-between">
+                <span>Last connect attempt {lastAttempt?.at ? `— ${new Date(lastAttempt.at).toLocaleString()}` : ""}</span>
+                {lastAttempt && (
+                  <button
+                    className="text-[10px] underline hover:text-foreground"
+                    onClick={() => {
+                      localStorage.removeItem(LS_KEY);
+                      setLastAttempt(null);
+                    }}
+                  >
+                    clear
+                  </button>
+                )}
+              </div>
+              {!lastAttempt ? (
+                <div className="text-sm text-muted-foreground">No attempt recorded on this browser.</div>
+              ) : (
+                <div className="space-y-3">
+                  {lastAttempt.connectError && (
+                    <div className="text-xs font-mono text-destructive">
+                      connect error: {lastAttempt.connectError}
+                    </div>
+                  )}
+                  {lastAttempt.authorizeUrl && (
+                    <div>
+                      <div className="text-xs font-mono text-muted-foreground mb-1">authorize URL sent to Salesforce</div>
+                      <div className="text-xs font-mono bg-muted/40 rounded p-3 break-all">
+                        <a
+                          href={lastAttempt.authorizeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline hover:text-foreground"
+                        >
+                          {lastAttempt.authorizeUrl}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                  {lastAttempt.callbackParams && (
+                    <div>
+                      <div className="text-xs font-mono text-muted-foreground mb-1">
+                        callback params {lastAttempt.callbackAt ? `(${new Date(lastAttempt.callbackAt).toLocaleString()})` : ""}
+                      </div>
+                      <pre className="text-xs font-mono bg-muted/40 rounded p-3 overflow-auto max-h-48">
+{JSON.stringify(lastAttempt.callbackParams, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  {!lastAttempt.callbackParams && lastAttempt.authorizeUrl && (
+                    <div className="text-xs font-mono text-status-caution">
+                      No callback received yet — Salesforce has not redirected back to this browser.
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </CardContent>
