@@ -14,13 +14,198 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      connected_services: {
+        Row: {
+          access_token_issued_at: string | null
+          connected_by_user_ref: string | null
+          created_at: string
+          discovery_status: string | null
+          discovery_updated_at: string | null
+          id: string
+          instance_url: string | null
+          last_refresh_at: string | null
+          last_refresh_error: string | null
+          login_url: string | null
+          oauth_refresh_token_enc: string | null
+          org_id: string | null
+          org_name: string | null
+          service_key: string
+          status: string
+          token_refresh_lock_owner: string | null
+          token_refresh_locked_until: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token_issued_at?: string | null
+          connected_by_user_ref?: string | null
+          created_at?: string
+          discovery_status?: string | null
+          discovery_updated_at?: string | null
+          id?: string
+          instance_url?: string | null
+          last_refresh_at?: string | null
+          last_refresh_error?: string | null
+          login_url?: string | null
+          oauth_refresh_token_enc?: string | null
+          org_id?: string | null
+          org_name?: string | null
+          service_key: string
+          status?: string
+          token_refresh_lock_owner?: string | null
+          token_refresh_locked_until?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token_issued_at?: string | null
+          connected_by_user_ref?: string | null
+          created_at?: string
+          discovery_status?: string | null
+          discovery_updated_at?: string | null
+          id?: string
+          instance_url?: string | null
+          last_refresh_at?: string | null
+          last_refresh_error?: string | null
+          login_url?: string | null
+          oauth_refresh_token_enc?: string | null
+          org_id?: string | null
+          org_name?: string | null
+          service_key?: string
+          status?: string
+          token_refresh_lock_owner?: string | null
+          token_refresh_locked_until?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      oauth_states: {
+        Row: {
+          code_verifier: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          nonce: string | null
+          provider: string
+          redirect_to: string | null
+          state: string
+          user_ref: string | null
+        }
+        Insert: {
+          code_verifier: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          nonce?: string | null
+          provider?: string
+          redirect_to?: string | null
+          state: string
+          user_ref?: string | null
+        }
+        Update: {
+          code_verifier?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          nonce?: string | null
+          provider?: string
+          redirect_to?: string | null
+          state?: string
+          user_ref?: string | null
+        }
+        Relationships: []
+      }
+      salesforce_schema_cache: {
+        Row: {
+          created_at: string
+          custom: boolean | null
+          fetched_at: string
+          fields: Json
+          id: string
+          label: string | null
+          namespace: string | null
+          object_name: string
+          raw: Json | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          custom?: boolean | null
+          fetched_at?: string
+          fields?: Json
+          id?: string
+          label?: string | null
+          namespace?: string | null
+          object_name: string
+          raw?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          custom?: boolean | null
+          fetched_at?: string
+          fields?: Json
+          id?: string
+          label?: string | null
+          namespace?: string | null
+          object_name?: string
+          raw?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      connected_services_public: {
+        Row: {
+          discovery_status: string | null
+          discovery_updated_at: string | null
+          instance_url: string | null
+          last_refresh_at: string | null
+          org_id: string | null
+          org_name: string | null
+          service_key: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          discovery_status?: string | null
+          discovery_updated_at?: string | null
+          instance_url?: string | null
+          last_refresh_at?: string | null
+          org_id?: string | null
+          org_name?: string | null
+          service_key?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          discovery_status?: string | null
+          discovery_updated_at?: string | null
+          instance_url?: string | null
+          last_refresh_at?: string | null
+          org_id?: string | null
+          org_name?: string | null
+          service_key?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      get_connected_service_status: {
+        Args: { _service_key: string }
+        Returns: {
+          discovery_status: string
+          discovery_updated_at: string
+          instance_url: string
+          last_refresh_at: string
+          org_id: string
+          org_name: string
+          service_key: string
+          status: string
+          updated_at: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
