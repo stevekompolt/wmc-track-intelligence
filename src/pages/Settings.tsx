@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Settings as SettingsIcon, Database, Users, Key, Server, Shield, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_ACCESS } from '@/types/auth';
@@ -59,6 +60,9 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground mt-2 font-mono truncate">
                 {sfConnected ? sfStatus?.org_name || sfStatus?.org_id : 'Click to manage connection'}
               </p>
+              <Button size="sm" className="mt-3 w-full">
+                {sfConnected ? 'Manage Connection' : 'Connect Salesforce'}
+              </Button>
             </CardContent>
           </Card>
           </Link>
