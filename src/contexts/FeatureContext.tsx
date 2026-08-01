@@ -1,16 +1,25 @@
 // Context for sharing feature state across all views with mode-aware filtering
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import type { VenueFeature, FeatureType, FeatureGeometry, FeatureStyle, FeatureStatus } from '@/types/feature';
+import type { VenueFeature, FeatureType, FeatureGeometry, FeatureStyle, FeatureStatus, FeatureGroup } from '@/types/feature';
 import type { AppMode } from '@/types/viewpoint';
 import { DEFAULT_FEATURE_STYLE } from '@/types/feature';
 import { useTrackContext } from '@/contexts/TrackContext';
 import { useCurrentMode } from '@/hooks/useCurrentMode';
 import * as featuresApi from '@/services/featuresApi';
+import * as groupsApi from '@/services/featureGroupsApi';
+import { getPolygonParts, buildPolygonGeometry } from '@/lib/polygonParts';
 
 interface FeatureContextType {
   // All features for the current track
   features: VenueFeature[];
+
+  // Layers (groups) for the current track
+  groups: FeatureGroup[];
+
+  // Layer that new features are added to (null = root)
+  activeGroupId: string | null;
+  setActiveGroupId: (groupId: string | null) => void;
   
   // Features filtered by current mode's visibility
   visibleFeatures: VenueFeature[];
@@ -30,6 +39,12 @@ interface FeatureContextType {
   createFeature: (type: FeatureType, geometry: FeatureGeometry, style?: FeatureStyle) => Promise<VenueFeature | null>;
   updateFeature: (featureId: string, updates: Partial<VenueFeature>) => Promise<void>;
   deleteFeature: (featureId: string) => Promise<void>;
+
+  // Group operations
+  createGroup: (name?: string) => Promise<FeatureGroup | null>;
+  renameGroup: (groupId: string, name: string) => Promise<void>;
+  deleteGroup: (groupId: string) => Promise<void>;
+  moveFeatureToGroup: (featureId: string, groupId: string | null) => Promise<void>;
   
   // Convenience updates
   updateName: (featureId: string, name: string) => Promise<void>;
@@ -67,6 +82,8 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
   const currentMode = useCurrentMode();
   
   const [features, setFeatures] = useState<VenueFeature[]>([]);
+  const [groups, setGroups] = useState<FeatureGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +98,8 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
   const loadFeatures = useCallback(async () => {
     if (!selectedTrack?.id) {
       setFeatures([]);
+      setGroups([]);
+      setActiveGroupId(null);
       setSelectedFeatureId(null);
       return;
     }
@@ -89,7 +108,44 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const venueFeatures = await featuresApi.getFeaturesByVenue(selectedTrack.id);
+      const venueId = selectedTrack.id;
+      let venueFeatures = await featuresApi.getFeaturesByVenue(venueId);
+
+      // Migrate legacy multi-part polygons: each shape becomes its own feature
+      // inside a layer named after the original.
+      const legacy = venueFeatures.filter(f => f.geometry.type === 'MultiPolygon');
+      for (const feature of legacy) {
+        const parts = getPolygonParts(feature.geometry);
+        const group = await groupsApi.createGroup(venueId, feature.name);
+        await featuresApi.updateFeature(feature.id, {
+          groupId: group.id,
+          name: `${feature.name} 1`,
+          geometry: buildPolygonGeometry([parts[0] ?? []]),
+        });
+        for (let i = 1; i < parts.length; i++) {
+          const child = await featuresApi.createFeature(
+            venueId,
+            'polygon',
+            buildPolygonGeometry([parts[i]]),
+            feature.style,
+            `${feature.name} ${i + 1}`,
+            group.id,
+          );
+          await featuresApi.updateFeature(child.id, {
+            description: feature.description,
+            visibleToFans: feature.visibleToFans,
+            visibleToMedia: feature.visibleToMedia,
+            visibleToOps: feature.visibleToOps,
+            status: feature.status,
+          });
+        }
+      }
+      if (legacy.length > 0) {
+        venueFeatures = await featuresApi.getFeaturesByVenue(venueId);
+      }
+
+      const venueGroups = await groupsApi.getGroupsByVenue(venueId);
+      setGroups(venueGroups.sort((a, b) => a.zOrder - b.zOrder));
       setFeatures(venueFeatures.sort((a, b) => a.zOrder - b.zOrder));
     } catch (err) {
       setError('Failed to load features');
@@ -117,7 +173,14 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
     if (!selectedTrack?.id) return null;
 
     try {
-      const feature = await featuresApi.createFeature(selectedTrack.id, type, geometry, style);
+      const feature = await featuresApi.createFeature(
+        selectedTrack.id,
+        type,
+        geometry,
+        style,
+        undefined,
+        activeGroupId,
+      );
       setFeatures(prev => [...prev, feature].sort((a, b) => a.zOrder - b.zOrder));
       setSelectedFeatureId(feature.id);
       return feature;
@@ -126,7 +189,7 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
       console.error('Error creating feature:', err);
       return null;
     }
-  }, [selectedTrack?.id]);
+  }, [selectedTrack?.id, activeGroupId]);
 
   // Update a feature
   const updateFeature = useCallback(async (
@@ -200,10 +263,53 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
     await loadFeatures();
   }, [loadFeatures]);
 
+  // ---- Group operations ----
+  const createGroup = useCallback(async (name?: string): Promise<FeatureGroup | null> => {
+    if (!selectedTrack?.id) return null;
+    try {
+      const group = await groupsApi.createGroup(selectedTrack.id, name);
+      setGroups(prev => [...prev, group].sort((a, b) => a.zOrder - b.zOrder));
+      setActiveGroupId(group.id);
+      return group;
+    } catch (err) {
+      setError('Failed to create layer');
+      console.error('Error creating layer:', err);
+      return null;
+    }
+  }, [selectedTrack?.id]);
+
+  const renameGroup = useCallback(async (groupId: string, name: string) => {
+    const updated = await groupsApi.updateGroup(groupId, { name });
+    if (updated) {
+      setGroups(prev => prev.map(g => (g.id === groupId ? updated : g)));
+    }
+  }, []);
+
+  const deleteGroup = useCallback(async (groupId: string) => {
+    const children = features.filter(f => f.groupId === groupId);
+    for (const child of children) {
+      await featuresApi.deleteFeature(child.id);
+    }
+    await groupsApi.deleteGroup(groupId);
+    setFeatures(prev => prev.filter(f => f.groupId !== groupId));
+    setGroups(prev => prev.filter(g => g.id !== groupId));
+    setActiveGroupId(prev => (prev === groupId ? null : prev));
+    if (children.some(c => c.id === selectedFeatureId)) {
+      setSelectedFeatureId(null);
+    }
+  }, [features, selectedFeatureId]);
+
+  const moveFeatureToGroup = useCallback(async (featureId: string, groupId: string | null) => {
+    await updateFeature(featureId, { groupId });
+  }, [updateFeature]);
+
   return (
     <FeatureContext.Provider
       value={{
         features,
+        groups,
+        activeGroupId,
+        setActiveGroupId,
         visibleFeatures,
         currentMode,
         isLoading,
@@ -213,6 +319,10 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
         createFeature,
         updateFeature,
         deleteFeature,
+        createGroup,
+        renameGroup,
+        deleteGroup,
+        moveFeatureToGroup,
         updateName,
         updateDescription,
         updateStyle,
