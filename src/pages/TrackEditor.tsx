@@ -123,8 +123,25 @@ export default function TrackEditor() {
     ? overlayContext.selectedOverlay?.id || null
     : null;
 
-  // Handle feature complete from drawing
+  // Handle feature complete from drawing.
+  // Polygons drawn while a polygon layer is selected join that layer as a new
+  // shape instead of creating a separate layer.
   const handleFeatureComplete = useCallback((type: FeatureType, geometry: FeatureGeometry) => {
+    const selected = featureContext.selectedFeature;
+    if (
+      type === 'polygon' &&
+      geometry.type === 'Polygon' &&
+      selected &&
+      selected.type === 'polygon' &&
+      isPolygonGeometry(selected.geometry)
+    ) {
+      const ring = geometry.coordinates[0] ?? [];
+      featureContext.updateGeometry(
+        selected.id,
+        appendPolygonPart(selected.geometry, ring),
+      );
+      return;
+    }
     featureContext.createFeature(type, geometry, DEFAULT_FEATURE_STYLE);
   }, [featureContext]);
 
