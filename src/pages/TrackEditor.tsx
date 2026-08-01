@@ -315,9 +315,14 @@ export default function TrackEditor() {
   // Handle drawing tool click
   const handleStartDrawing = useCallback((type: FeatureType) => {
     setEditingGeometryFeatureId(null);
-    handleSelectItem(null, null);
+    // Keep a selected polygon layer selected so the new shape joins it
+    const keepSelection =
+      type === 'polygon' && featureContext.selectedFeature?.type === 'polygon';
+    if (!keepSelection) {
+      handleSelectItem(null, null);
+    }
     featureDrawing.startDrawing(type);
-  }, [handleSelectItem, featureDrawing]);
+  }, [handleSelectItem, featureDrawing, featureContext.selectedFeature]);
 
   // Handle creating new overlay
   const handleCreateOverlay = useCallback(async () => {
