@@ -1,7 +1,7 @@
 // Feature Inspector component for editing feature properties
 
 import { useState, useEffect, useCallback } from 'react';
-import { Trash2, MapPin, Spline, Hexagon, Move, Eye, EyeOff } from 'lucide-react';
+import { Trash2, MapPin, Spline, Hexagon, Move, Eye, EyeOff, Plus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import type { VenueFeature, FeatureStyle, FeatureStatus, IconKey } from '@/types/feature';
 import { FEATURE_COLORS, FEATURE_ICONS } from '@/types/feature';
+import { getPolygonParts, partVertexCount } from '@/lib/polygonParts';
 
 interface FeatureInspectorProps {
   feature: VenueFeature | null;
@@ -24,6 +25,8 @@ interface FeatureInspectorProps {
   onUpdateStatus: (status: FeatureStatus) => void;
   onStartEditingGeometry: () => void;
   onStopEditingGeometry: () => void;
+  onAddPart?: () => void;
+  onRemovePart?: (index: number) => void;
   onDelete: () => void;
 }
 
@@ -50,6 +53,11 @@ const formatCoordinates = (feature: VenueFeature): string => {
     const coords = feature.geometry.coordinates[0];
     return `${coords.length - 1} vertices`; // -1 because first/last are same
   }
+  if (feature.geometry.type === 'MultiPolygon') {
+    const parts = getPolygonParts(feature.geometry);
+    const vertices = parts.reduce((sum, ring) => sum + partVertexCount(ring), 0);
+    return `${parts.length} parts · ${vertices} vertices`;
+  }
   return '';
 };
 
@@ -65,6 +73,8 @@ export function FeatureInspector({
   onUpdateStatus,
   onStartEditingGeometry,
   onStopEditingGeometry,
+  onAddPart,
+  onRemovePart,
   onDelete,
 }: FeatureInspectorProps) {
   const [localName, setLocalName] = useState('');
