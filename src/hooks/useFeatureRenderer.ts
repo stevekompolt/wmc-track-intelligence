@@ -160,7 +160,7 @@ export function useFeatureRenderer({
           id: LAYER_POLYGONS_FILL,
           type: 'fill',
           source: SOURCE_ID,
-          filter: ['==', ['geometry-type'], 'Polygon'],
+          filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
           paint: {
             'fill-color': ['get', 'fillColor'],
             'fill-opacity': ['get', 'fillOpacity'],
@@ -172,7 +172,7 @@ export function useFeatureRenderer({
           id: LAYER_POLYGONS_STROKE,
           type: 'line',
           source: SOURCE_ID,
-          filter: ['==', ['geometry-type'], 'Polygon'],
+          filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
           paint: {
             'line-color': ['get', 'color'],
             'line-width': [
@@ -237,7 +237,7 @@ export function useFeatureRenderer({
           source: PREVIEW_SOURCE_ID,
           filter: ['any', 
             ['==', ['get', 'type'], 'preview-line'],
-            ['==', ['geometry-type'], 'Polygon']
+            ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]]
           ],
           paint: {
             'line-color': '#3B82F6',

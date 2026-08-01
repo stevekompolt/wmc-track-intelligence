@@ -23,6 +23,7 @@ import { useAsphaltDetection } from '@/hooks/useAsphaltDetection';
 import type { CornerHandle, BoundingBox } from '@/types/overlay';
 import type { FeatureType, FeatureGeometry, PolygonGeometry } from '@/types/feature';
 import { DEFAULT_FEATURE_STYLE } from '@/types/feature';
+import { appendPolygonPart, isPolygonGeometry, removePolygonPart } from '@/lib/polygonParts';
 import mapboxgl from 'mapbox-gl';
 
 // Selection type for unified list
@@ -123,8 +124,25 @@ export default function TrackEditor() {
     ? overlayContext.selectedOverlay?.id || null
     : null;
 
-  // Handle feature complete from drawing
+  // Handle feature complete from drawing.
+  // Polygons drawn while a polygon layer is selected join that layer as a new
+  // shape instead of creating a separate layer.
   const handleFeatureComplete = useCallback((type: FeatureType, geometry: FeatureGeometry) => {
+    const selected = featureContext.selectedFeature;
+    if (
+      type === 'polygon' &&
+      geometry.type === 'Polygon' &&
+      selected &&
+      selected.type === 'polygon' &&
+      isPolygonGeometry(selected.geometry)
+    ) {
+      const ring = geometry.coordinates[0] ?? [];
+      featureContext.updateGeometry(
+        selected.id,
+        appendPolygonPart(selected.geometry, ring),
+      );
+      return;
+    }
     featureContext.createFeature(type, geometry, DEFAULT_FEATURE_STYLE);
   }, [featureContext]);
 
@@ -297,9 +315,14 @@ export default function TrackEditor() {
   // Handle drawing tool click
   const handleStartDrawing = useCallback((type: FeatureType) => {
     setEditingGeometryFeatureId(null);
-    handleSelectItem(null, null);
+    // Keep a selected polygon layer selected so the new shape joins it
+    const keepSelection =
+      type === 'polygon' && featureContext.selectedFeature?.type === 'polygon';
+    if (!keepSelection) {
+      handleSelectItem(null, null);
+    }
     featureDrawing.startDrawing(type);
-  }, [handleSelectItem, featureDrawing]);
+  }, [handleSelectItem, featureDrawing, featureContext.selectedFeature]);
 
   // Handle creating new overlay
   const handleCreateOverlay = useCallback(async () => {
@@ -581,6 +604,16 @@ export default function TrackEditor() {
             <FeatureInspector
               feature={featureContext.selectedFeature}
               isEditingGeometry={editingGeometryFeatureId === featureContext.selectedFeature?.id}
+              onAddPart={() => handleStartDrawing('polygon')}
+              onRemovePart={(index) => {
+                const selected = featureContext.selectedFeature;
+                if (selected && isPolygonGeometry(selected.geometry)) {
+                  featureContext.updateGeometry(
+                    selected.id,
+                    removePolygonPart(selected.geometry, index),
+                  );
+                }
+              }}
               isHidden={featureContext.selectedFeature ? hiddenFeatureIds.has(featureContext.selectedFeature.id) : false}
               onToggleHidden={featureContext.selectedFeature ? () => handleToggleFeatureVisibility(featureContext.selectedFeature!.id) : undefined}
               onUpdateName={(name) => {
