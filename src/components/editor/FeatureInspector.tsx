@@ -189,51 +189,28 @@ export function FeatureInspector({
           </Button>
         )}
 
-        {/* Parts list — polygon layers can hold multiple shapes */}
-        {feature.type === 'polygon' && (() => {
-          const parts = getPolygonParts(feature.geometry);
-          return (
-            <div className="space-y-1 pt-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Shapes ({parts.length})
-                </span>
-                {onAddPart && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onAddPart}
-                    className="h-6 px-2 text-xs hover:text-primary focus-visible:ring-primary/50"
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add shape
-                  </Button>
-                )}
-              </div>
-              {parts.map((ring, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between rounded border border-border/60 bg-muted/30 px-2 py-1"
-                >
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    Shape {index + 1} · {partVertexCount(ring)} vertices
-                  </span>
-                  {onRemovePart && parts.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onRemovePart(index)}
-                      className="h-5 w-5 text-muted-foreground hover:text-destructive focus-visible:ring-primary/50"
-                      aria-label={`Remove shape ${index + 1}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          );
-        })()}
+        {/* Layer assignment */}
+        {onMoveToGroup && (
+          <div className="space-y-1.5 pt-1">
+            <Label className="text-xs">Layer</Label>
+            <Select
+              value={feature.groupId ?? 'none'}
+              onValueChange={(v) => onMoveToGroup(v === 'none' ? null : v)}
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No layer</SelectItem>
+                {groups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* Style Section */}
