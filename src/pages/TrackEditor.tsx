@@ -124,25 +124,9 @@ export default function TrackEditor() {
     ? overlayContext.selectedOverlay?.id || null
     : null;
 
-  // Handle feature complete from drawing.
-  // Polygons drawn while a polygon layer is selected join that layer as a new
-  // shape instead of creating a separate layer.
+  // Handle feature complete from drawing. New shapes land inside the active
+  // layer (group) when one is targeted, otherwise at the root.
   const handleFeatureComplete = useCallback((type: FeatureType, geometry: FeatureGeometry) => {
-    const selected = featureContext.selectedFeature;
-    if (
-      type === 'polygon' &&
-      geometry.type === 'Polygon' &&
-      selected &&
-      selected.type === 'polygon' &&
-      isPolygonGeometry(selected.geometry)
-    ) {
-      const ring = geometry.coordinates[0] ?? [];
-      featureContext.updateGeometry(
-        selected.id,
-        appendPolygonPart(selected.geometry, ring),
-      );
-      return;
-    }
     featureContext.createFeature(type, geometry, DEFAULT_FEATURE_STYLE);
   }, [featureContext]);
 
@@ -529,16 +513,22 @@ export default function TrackEditor() {
         {/* Unified Map Layers List */}
         <CollapsibleMapItemList
           features={featureContext.features}
+          groups={featureContext.groups}
           overlays={overlayContext.overlays}
           selectedItemId={selectedItemId}
           selectedItemType={selectionType}
+          activeGroupId={featureContext.activeGroupId}
           onSelectItem={handleSelectItem}
+          onSetActiveGroup={featureContext.setActiveGroupId}
+          onAddGroup={handleAddGroup}
+          onRenameGroup={featureContext.renameGroup}
+          onDeleteGroup={handleDeleteGroup}
           hiddenFeatureIds={hiddenFeatureIds}
           hiddenOverlayIds={overlayContext.hiddenOverlayIds}
           onToggleFeatureVisibility={handleToggleFeatureVisibility}
+          onToggleGroupVisibility={handleToggleGroupVisibility}
           onToggleOverlayVisibility={overlayContext.toggleOverlayVisibility}
           onDeleteItem={handleDeleteItem}
-          onReorderItems={handleReorderItems}
         />
         
         {/* Viewpoints Manager */}
@@ -604,14 +594,10 @@ export default function TrackEditor() {
             <FeatureInspector
               feature={featureContext.selectedFeature}
               isEditingGeometry={editingGeometryFeatureId === featureContext.selectedFeature?.id}
-              onAddPart={() => handleStartDrawing('polygon')}
-              onRemovePart={(index) => {
-                const selected = featureContext.selectedFeature;
-                if (selected && isPolygonGeometry(selected.geometry)) {
-                  featureContext.updateGeometry(
-                    selected.id,
-                    removePolygonPart(selected.geometry, index),
-                  );
+              groups={featureContext.groups}
+              onMoveToGroup={(groupId) => {
+                if (featureContext.selectedFeature) {
+                  featureContext.moveFeatureToGroup(featureContext.selectedFeature.id, groupId);
                 }
               }}
               isHidden={featureContext.selectedFeature ? hiddenFeatureIds.has(featureContext.selectedFeature.id) : false}
