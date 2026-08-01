@@ -23,6 +23,7 @@ import { useAsphaltDetection } from '@/hooks/useAsphaltDetection';
 import type { CornerHandle, BoundingBox } from '@/types/overlay';
 import type { FeatureType, FeatureGeometry, PolygonGeometry } from '@/types/feature';
 import { DEFAULT_FEATURE_STYLE } from '@/types/feature';
+import { appendPolygonPart, isPolygonGeometry, removePolygonPart } from '@/lib/polygonParts';
 import mapboxgl from 'mapbox-gl';
 
 // Selection type for unified list
