@@ -67,6 +67,18 @@ export async function runSchemaDiscovery() {
   );
 }
 
+/**
+ * Generic authenticated passthrough to the Salesforce REST API via the
+ * admin-gated `salesforce-proxy` edge function.
+ */
+export async function sfProxy<T = unknown>(
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+) {
+  return invoke<T>("salesforce-proxy", { method, path, body });
+}
+
 export async function listSchemaCache() {
   const { data, error } = await supabase
     .from("salesforce_schema_cache")
