@@ -170,7 +170,7 @@ export function useSharedFeatureRenderer({
           id: SHARED_LAYER_POLYGONS_FILL,
           type: 'fill',
           source: SHARED_SOURCE_ID,
-          filter: ['==', ['geometry-type'], 'Polygon'],
+          filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
           paint: {
             'fill-color': ['get', 'fillColor'],
             'fill-opacity': ['get', 'fillOpacity'],
@@ -181,7 +181,7 @@ export function useSharedFeatureRenderer({
           id: SHARED_LAYER_POLYGONS_STROKE,
           type: 'line',
           source: SHARED_SOURCE_ID,
-          filter: ['==', ['geometry-type'], 'Polygon'],
+          filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
           paint: {
             'line-color': ['get', 'color'],
             'line-width': ['get', 'strokeWidth'],
