@@ -70,6 +70,18 @@ export interface VenueFeature {
   visibleToOps: boolean;
   status: FeatureStatus;
   zOrder: number;
+  /** Parent layer (group) id, or null when the feature sits at the root. */
+  groupId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A named layer that groups features together. Styling stays per-feature. */
+export interface FeatureGroup {
+  id: string;
+  venueId: string;
+  name: string;
+  zOrder: number;
   createdAt: string;
   updatedAt: string;
 }

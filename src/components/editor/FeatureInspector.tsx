@@ -1,7 +1,7 @@
 // Feature Inspector component for editing feature properties
 
 import { useState, useEffect, useCallback } from 'react';
-import { Trash2, MapPin, Spline, Hexagon, Move, Eye, EyeOff, Plus, X } from 'lucide-react';
+import { Trash2, MapPin, Spline, Hexagon, Move, Eye, EyeOff } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { VenueFeature, FeatureStyle, FeatureStatus, IconKey } from '@/types/feature';
+import type { VenueFeature, FeatureStyle, FeatureStatus, IconKey, FeatureGroup } from '@/types/feature';
 import { FEATURE_COLORS, FEATURE_ICONS } from '@/types/feature';
 import { getPolygonParts, partVertexCount } from '@/lib/polygonParts';
 
@@ -17,6 +17,8 @@ interface FeatureInspectorProps {
   feature: VenueFeature | null;
   isEditingGeometry: boolean;
   isHidden?: boolean;
+  groups?: FeatureGroup[];
+  onMoveToGroup?: (groupId: string | null) => void;
   onToggleHidden?: () => void;
   onUpdateName: (name: string) => void;
   onUpdateDescription: (description: string) => void;
@@ -25,8 +27,6 @@ interface FeatureInspectorProps {
   onUpdateStatus: (status: FeatureStatus) => void;
   onStartEditingGeometry: () => void;
   onStopEditingGeometry: () => void;
-  onAddPart?: () => void;
-  onRemovePart?: (index: number) => void;
   onDelete: () => void;
 }
 
@@ -65,6 +65,8 @@ export function FeatureInspector({
   feature,
   isEditingGeometry,
   isHidden,
+  groups = [],
+  onMoveToGroup,
   onToggleHidden,
   onUpdateName,
   onUpdateDescription,
@@ -73,8 +75,6 @@ export function FeatureInspector({
   onUpdateStatus,
   onStartEditingGeometry,
   onStopEditingGeometry,
-  onAddPart,
-  onRemovePart,
   onDelete,
 }: FeatureInspectorProps) {
   const [localName, setLocalName] = useState('');
@@ -189,51 +189,28 @@ export function FeatureInspector({
           </Button>
         )}
 
-        {/* Parts list — polygon layers can hold multiple shapes */}
-        {feature.type === 'polygon' && (() => {
-          const parts = getPolygonParts(feature.geometry);
-          return (
-            <div className="space-y-1 pt-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Shapes ({parts.length})
-                </span>
-                {onAddPart && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onAddPart}
-                    className="h-6 px-2 text-xs hover:text-primary focus-visible:ring-primary/50"
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add shape
-                  </Button>
-                )}
-              </div>
-              {parts.map((ring, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between rounded border border-border/60 bg-muted/30 px-2 py-1"
-                >
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    Shape {index + 1} · {partVertexCount(ring)} vertices
-                  </span>
-                  {onRemovePart && parts.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onRemovePart(index)}
-                      className="h-5 w-5 text-muted-foreground hover:text-destructive focus-visible:ring-primary/50"
-                      aria-label={`Remove shape ${index + 1}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          );
-        })()}
+        {/* Layer assignment */}
+        {onMoveToGroup && (
+          <div className="space-y-1.5 pt-1">
+            <Label className="text-xs">Layer</Label>
+            <Select
+              value={feature.groupId ?? 'none'}
+              onValueChange={(v) => onMoveToGroup(v === 'none' ? null : v)}
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No layer</SelectItem>
+                {groups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* Style Section */}

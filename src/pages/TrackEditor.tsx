@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon, ChevronDown, Scan } from 'lucide-react';
-import type { MapItem } from '@/components/editor/MapItemList';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -23,7 +22,6 @@ import { useAsphaltDetection } from '@/hooks/useAsphaltDetection';
 import type { CornerHandle, BoundingBox } from '@/types/overlay';
 import type { FeatureType, FeatureGeometry, PolygonGeometry } from '@/types/feature';
 import { DEFAULT_FEATURE_STYLE } from '@/types/feature';
-import { appendPolygonPart, isPolygonGeometry, removePolygonPart } from '@/lib/polygonParts';
 import mapboxgl from 'mapbox-gl';
 
 // Selection type for unified list
@@ -124,25 +122,9 @@ export default function TrackEditor() {
     ? overlayContext.selectedOverlay?.id || null
     : null;
 
-  // Handle feature complete from drawing.
-  // Polygons drawn while a polygon layer is selected join that layer as a new
-  // shape instead of creating a separate layer.
+  // Handle feature complete from drawing. New shapes land inside the active
+  // layer (group) when one is targeted, otherwise at the root.
   const handleFeatureComplete = useCallback((type: FeatureType, geometry: FeatureGeometry) => {
-    const selected = featureContext.selectedFeature;
-    if (
-      type === 'polygon' &&
-      geometry.type === 'Polygon' &&
-      selected &&
-      selected.type === 'polygon' &&
-      isPolygonGeometry(selected.geometry)
-    ) {
-      const ring = geometry.coordinates[0] ?? [];
-      featureContext.updateGeometry(
-        selected.id,
-        appendPolygonPart(selected.geometry, ring),
-      );
-      return;
-    }
     featureContext.createFeature(type, geometry, DEFAULT_FEATURE_STYLE);
   }, [featureContext]);
 
@@ -315,14 +297,31 @@ export default function TrackEditor() {
   // Handle drawing tool click
   const handleStartDrawing = useCallback((type: FeatureType) => {
     setEditingGeometryFeatureId(null);
-    // Keep a selected polygon layer selected so the new shape joins it
-    const keepSelection =
-      type === 'polygon' && featureContext.selectedFeature?.type === 'polygon';
-    if (!keepSelection) {
-      handleSelectItem(null, null);
-    }
+    handleSelectItem(null, null);
     featureDrawing.startDrawing(type);
-  }, [handleSelectItem, featureDrawing, featureContext.selectedFeature]);
+  }, [handleSelectItem, featureDrawing]);
+
+  // Layer (group) handlers
+  const handleAddGroup = useCallback(async () => {
+    await featureContext.createGroup();
+  }, [featureContext]);
+
+  const handleDeleteGroup = useCallback(async (groupId: string) => {
+    setEditingGeometryFeatureId(null);
+    handleSelectItem(null, null);
+    await featureContext.deleteGroup(groupId);
+  }, [featureContext, handleSelectItem]);
+
+  const handleToggleGroupVisibility = useCallback((groupId: string, hide: boolean) => {
+    const childIds = featureContext.features
+      .filter(f => f.groupId === groupId)
+      .map(f => f.id);
+    setHiddenFeatureIds(prev => {
+      const next = new Set(prev);
+      childIds.forEach(id => (hide ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  }, [featureContext.features]);
 
   // Handle creating new overlay
   const handleCreateOverlay = useCallback(async () => {
@@ -349,18 +348,6 @@ export default function TrackEditor() {
       overlayContext.deleteOverlay(id);
     }
   }, [featureContext, overlayContext, handleSelectItem]);
-
-  // Handle reorder from drag-and-drop
-  const handleReorderItems = useCallback((reorderedItems: MapItem[]) => {
-    reorderedItems.forEach((item, index) => {
-      const newZOrder = index + 1;
-      if (item.type === 'feature') {
-        featureContext.updateFeature(item.data.id, { zOrder: newZOrder });
-      } else {
-        overlayContext.updateOverlay(item.data.id, { zOrder: newZOrder });
-      }
-    });
-  }, [featureContext, overlayContext]);
 
   // Get current drawing instruction
   const drawingInstruction = featureDrawing.mode !== 'none' ? DRAWING_INSTRUCTIONS[featureDrawing.mode] : null;
@@ -529,16 +516,22 @@ export default function TrackEditor() {
         {/* Unified Map Layers List */}
         <CollapsibleMapItemList
           features={featureContext.features}
+          groups={featureContext.groups}
           overlays={overlayContext.overlays}
           selectedItemId={selectedItemId}
           selectedItemType={selectionType}
+          activeGroupId={featureContext.activeGroupId}
           onSelectItem={handleSelectItem}
+          onSetActiveGroup={featureContext.setActiveGroupId}
+          onAddGroup={handleAddGroup}
+          onRenameGroup={featureContext.renameGroup}
+          onDeleteGroup={handleDeleteGroup}
           hiddenFeatureIds={hiddenFeatureIds}
           hiddenOverlayIds={overlayContext.hiddenOverlayIds}
           onToggleFeatureVisibility={handleToggleFeatureVisibility}
+          onToggleGroupVisibility={handleToggleGroupVisibility}
           onToggleOverlayVisibility={overlayContext.toggleOverlayVisibility}
           onDeleteItem={handleDeleteItem}
-          onReorderItems={handleReorderItems}
         />
         
         {/* Viewpoints Manager */}
@@ -604,14 +597,10 @@ export default function TrackEditor() {
             <FeatureInspector
               feature={featureContext.selectedFeature}
               isEditingGeometry={editingGeometryFeatureId === featureContext.selectedFeature?.id}
-              onAddPart={() => handleStartDrawing('polygon')}
-              onRemovePart={(index) => {
-                const selected = featureContext.selectedFeature;
-                if (selected && isPolygonGeometry(selected.geometry)) {
-                  featureContext.updateGeometry(
-                    selected.id,
-                    removePolygonPart(selected.geometry, index),
-                  );
+              groups={featureContext.groups}
+              onMoveToGroup={(groupId) => {
+                if (featureContext.selectedFeature) {
+                  featureContext.moveFeatureToGroup(featureContext.selectedFeature.id, groupId);
                 }
               }}
               isHidden={featureContext.selectedFeature ? hiddenFeatureIds.has(featureContext.selectedFeature.id) : false}
