@@ -46,7 +46,16 @@ export interface PolygonGeometry {
   coordinates: [number, number][][]; // [[[lng, lat], ...]]
 }
 
-export type FeatureGeometry = PointGeometry | LineGeometry | PolygonGeometry;
+export interface MultiPolygonGeometry {
+  type: 'MultiPolygon';
+  coordinates: [number, number][][][]; // [[[[lng, lat], ...]], ...] — one entry per part
+}
+
+export type FeatureGeometry =
+  | PointGeometry
+  | LineGeometry
+  | PolygonGeometry
+  | MultiPolygonGeometry;
 
 export interface VenueFeature {
   id: string;
