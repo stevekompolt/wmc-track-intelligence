@@ -28,6 +28,9 @@ import { cn } from '@/lib/utils';
 import { GlobalTrackSelector } from '@/components/layout/GlobalTrackSelector';
 import { SharedMapContainer } from '@/components/layout/SharedMapContainer';
 import { FeatureProvider } from '@/contexts/FeatureContext';
+import { TrackPickProvider } from '@/contexts/TrackPickContext';
+import { NewTrackButton } from '@/components/tracks/NewTrackButton';
+import { TrackPickCrosshair } from '@/components/tracks/TrackPickCrosshair';
 
 interface NavItem {
   id: string;
@@ -83,6 +86,7 @@ export function AppLayout() {
   );
 
   return (
+    <TrackPickProvider>
     <div className="flex h-screen flex-col bg-background">
       {/* Top Navigation Bar */}
       <header className="flex h-14 items-center justify-between border-b border-border bg-card/50 px-4">
@@ -99,8 +103,9 @@ export function AppLayout() {
           </Link>
 
           {/* Global Track Selector */}
-          <div className="hidden md:flex items-center border-l border-border pl-4">
+          <div className="hidden md:flex items-center gap-2 border-l border-border pl-4">
             <GlobalTrackSelector />
+            {showMap && <NewTrackButton />}
           </div>
         </div>
 
@@ -239,6 +244,7 @@ export function AppLayout() {
         <FeatureProvider>
           {/* Persistent Map Layer */}
           {showMap && <SharedMapContainer />}
+          {showMap && <TrackPickCrosshair />}
           
           {/* Mode Overlay Layer */}
           {/* Important: keep this layer pointer-events-none so the map still receives pan/zoom.
@@ -263,5 +269,6 @@ export function AppLayout() {
         </div>
       </footer>
     </div>
+    </TrackPickProvider>
   );
 }

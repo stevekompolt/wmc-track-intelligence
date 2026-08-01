@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode, useMemo, useCallback } from 'react';
 import { Track } from '@/types/track';
 import { useTracks } from '@/hooks/useTracks';
 
@@ -9,14 +9,26 @@ interface TrackContextType {
   setSelectedTrack: (track: Track | null) => void;
   tracks: Track[];
   isLoading: boolean;
+  /** Merge a just-created track into the list (feed is eventually consistent) */
+  addLocalTrack: (track: Track) => void;
 }
 
 const TrackContext = createContext<TrackContextType | undefined>(undefined);
 
 export function TrackProvider({ children }: { children: ReactNode }) {
   const [selectedTrack, setSelectedTrackState] = useState<Track | null>(null);
-  const { data: tracks = [], isLoading } = useTracks();
+  const { data: fetchedTracks = [], isLoading } = useTracks();
+  const [localTracks, setLocalTracks] = useState<Track[]>([]);
   const hasAutoSelected = useRef(false);
+
+  const tracks = useMemo(() => {
+    if (!localTracks.length) return fetchedTracks;
+    const merged = [...fetchedTracks];
+    for (const local of localTracks) {
+      if (!merged.some((t) => t.id === local.id)) merged.push(local);
+    }
+    return merged.sort((a, b) => a.name.localeCompare(b.name));
+  }, [fetchedTracks, localTracks]);
 
   // Auto-select saved track once tracks load
   useEffect(() => {
@@ -42,6 +54,12 @@ export function TrackProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const addLocalTrack = useCallback((track: Track) => {
+    setLocalTracks((prev) =>
+      prev.some((t) => t.id === track.id) ? prev : [...prev, track],
+    );
+  }, []);
+
   return (
     <TrackContext.Provider
       value={{
@@ -49,6 +67,7 @@ export function TrackProvider({ children }: { children: ReactNode }) {
         setSelectedTrack,
         tracks,
         isLoading,
+        addLocalTrack,
       }}
     >
       {children}
