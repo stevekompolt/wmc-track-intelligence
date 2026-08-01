@@ -3,6 +3,11 @@
 import { useEffect, useRef, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import type { VenueFeature, FeatureGeometry } from '@/types/feature';
+import {
+  getPolygonParts,
+  replacePolygonPart,
+  type Ring,
+} from '@/lib/polygonParts';
 
 interface UseFeatureGeometryEditorOptions {
   map: mapboxgl.Map | null;
@@ -14,6 +19,7 @@ interface UseFeatureGeometryEditorOptions {
 interface VertexMarker {
   marker: mapboxgl.Marker;
   index: number;
+  partIndex: number;
   type: 'vertex' | 'midpoint';
 }
 
@@ -48,32 +54,37 @@ export function useFeatureGeometryEditor({
   // Keep callback ref updated
   onGeometryUpdateRef.current = onGeometryUpdate;
 
-  // Get coordinates array from feature geometry
-  const getCoordinates = useCallback((geom: FeatureGeometry): [number, number][] => {
+  // Open (non-closed) coordinate rings, one per part. Points and lines always
+  // have a single part; polygons may have several.
+  const getParts = useCallback((geom: FeatureGeometry): Ring[] => {
     if (geom.type === 'Point') {
-      return [geom.coordinates];
-    } else if (geom.type === 'LineString') {
-      return geom.coordinates;
-    } else if (geom.type === 'Polygon') {
-      // Return all but the closing point (which duplicates the first)
-      return geom.coordinates[0].slice(0, -1);
+      return [[geom.coordinates]];
     }
-    return [];
+    if (geom.type === 'LineString') {
+      return [geom.coordinates];
+    }
+    return getPolygonParts(geom).map((ring) => {
+      if (ring.length < 2) return ring;
+      const first = ring[0];
+      const last = ring[ring.length - 1];
+      const closed = first[0] === last[0] && first[1] === last[1];
+      return closed ? ring.slice(0, -1) : ring;
+    });
   }, []);
 
-  // Build new geometry from coordinates
+  // Rebuild geometry with a single part replaced
   const buildGeometry = useCallback((
-    type: VenueFeature['type'],
-    coords: [number, number][]
+    feat: VenueFeature,
+    partIndex: number,
+    coords: Ring
   ): FeatureGeometry => {
-    if (type === 'point') {
+    if (feat.type === 'point') {
       return { type: 'Point', coordinates: coords[0] };
-    } else if (type === 'line') {
-      return { type: 'LineString', coordinates: coords };
-    } else {
-      // Close the polygon ring
-      return { type: 'Polygon', coordinates: [[...coords, coords[0]]] };
     }
+    if (feat.type === 'line') {
+      return { type: 'LineString', coordinates: coords };
+    }
+    return replacePolygonPart(feat.geometry, partIndex, coords);
   }, []);
 
   // Calculate midpoint between two coordinates
@@ -87,13 +98,14 @@ export function useFeatureGeometryEditor({
     markersRef.current = [];
   }, []);
 
-  // Create markers for the current feature
+  // Create markers for the current feature (all parts)
   const createMarkersForFeature = useCallback((feat: VenueFeature) => {
     if (!map) return;
 
-    const coords = getCoordinates(feat.geometry);
+    const parts = getParts(feat.geometry);
     const newMarkers: VertexMarker[] = [];
 
+    parts.forEach((coords, partIndex) => {
     // Create vertex markers
     coords.forEach((coord, index) => {
       const el = createVertexElement('vertex');
@@ -108,12 +120,11 @@ export function useFeatureGeometryEditor({
 
       marker.on('drag', () => {
         const lngLat = marker.getLngLat();
-        const currentCoords = getCoordinates(feat.geometry);
-        const updatedCoords = [...currentCoords];
+        const updatedCoords = [...(getParts(feat.geometry)[partIndex] ?? coords)];
         updatedCoords[index] = [lngLat.lng, lngLat.lat];
         
         // Update geometry in real-time
-        const newGeometry = buildGeometry(feat.type, updatedCoords);
+        const newGeometry = buildGeometry(feat, partIndex, updatedCoords);
         onGeometryUpdateRef.current(newGeometry);
       });
 
@@ -121,7 +132,7 @@ export function useFeatureGeometryEditor({
         isDraggingRef.current = false;
       });
 
-      newMarkers.push({ marker, index, type: 'vertex' });
+      newMarkers.push({ marker, index, partIndex, type: 'vertex' });
     });
 
     // Create midpoint markers for lines and polygons (to add new vertices)
@@ -152,35 +163,32 @@ export function useFeatureGeometryEditor({
 
         marker.on('drag', () => {
           const lngLat = marker.getLngLat();
-          const currentCoords = getCoordinates(feat.geometry);
-          
           // Insert new vertex after index i (preview during drag)
-          const updatedCoords = [...currentCoords];
+          const updatedCoords = [...(getParts(feat.geometry)[partIndex] ?? coords)];
           updatedCoords.splice(i + 1, 0, [lngLat.lng, lngLat.lat]);
           
-          const newGeometry = buildGeometry(feat.type, updatedCoords);
+          const newGeometry = buildGeometry(feat, partIndex, updatedCoords);
           onGeometryUpdateRef.current(newGeometry);
         });
 
         marker.on('dragend', () => {
           isDraggingRef.current = false;
           const lngLat = marker.getLngLat();
-          const currentCoords = getCoordinates(feat.geometry);
-          
           // Insert new vertex after index i
-          const updatedCoords = [...currentCoords];
+          const updatedCoords = [...(getParts(feat.geometry)[partIndex] ?? coords)];
           updatedCoords.splice(i + 1, 0, [lngLat.lng, lngLat.lat]);
           
-          const newGeometry = buildGeometry(feat.type, updatedCoords);
+          const newGeometry = buildGeometry(feat, partIndex, updatedCoords);
           onGeometryUpdateRef.current(newGeometry);
         });
 
-        newMarkers.push({ marker, index: i, type: 'midpoint' });
+        newMarkers.push({ marker, index: i, partIndex, type: 'midpoint' });
       }
     }
+    });
 
     markersRef.current = newMarkers;
-  }, [map, getCoordinates, buildGeometry]);
+  }, [map, getParts, buildGeometry]);
 
   // Main effect: create/remove markers when editing state or feature ID changes
   useEffect(() => {
@@ -222,18 +230,19 @@ export function useFeatureGeometryEditor({
     if (!isEditing || !feature || isDraggingRef.current) return;
     if (currentFeatureIdRef.current !== feature.id) return; // Skip if feature ID doesn't match
 
-    const coords = getCoordinates(feature.geometry);
+    const parts = getParts(feature.geometry);
     
     // Update vertex marker positions using setLngLat (no recreation)
-    markersRef.current.forEach(({ marker, index, type }) => {
-      if (type === 'vertex' && coords[index]) {
-        marker.setLngLat(coords[index]);
+    markersRef.current.forEach(({ marker, index, partIndex, type }) => {
+      const coord = parts[partIndex]?.[index];
+      if (type === 'vertex' && coord) {
+        marker.setLngLat(coord);
       }
     });
     
     // Note: Midpoints would need full recreation when vertex count changes,
     // but that's handled by the midpoint drag creating a new geometry with more vertices
-  }, [feature?.geometry, isEditing, getCoordinates, feature?.id]);
+  }, [feature?.geometry, isEditing, getParts, feature?.id]);
 
   // Cleanup on unmount
   useEffect(() => {
