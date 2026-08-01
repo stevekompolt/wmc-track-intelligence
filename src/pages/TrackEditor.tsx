@@ -604,6 +604,16 @@ export default function TrackEditor() {
             <FeatureInspector
               feature={featureContext.selectedFeature}
               isEditingGeometry={editingGeometryFeatureId === featureContext.selectedFeature?.id}
+              onAddPart={() => handleStartDrawing('polygon')}
+              onRemovePart={(index) => {
+                const selected = featureContext.selectedFeature;
+                if (selected && isPolygonGeometry(selected.geometry)) {
+                  featureContext.updateGeometry(
+                    selected.id,
+                    removePolygonPart(selected.geometry, index),
+                  );
+                }
+              }}
               isHidden={featureContext.selectedFeature ? hiddenFeatureIds.has(featureContext.selectedFeature.id) : false}
               onToggleHidden={featureContext.selectedFeature ? () => handleToggleFeatureVisibility(featureContext.selectedFeature!.id) : undefined}
               onUpdateName={(name) => {
