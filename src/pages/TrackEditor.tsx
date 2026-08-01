@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Layers, MousePointer2, MapPin, Spline, Hexagon, Camera, Image as ImageIcon, ChevronDown, Scan } from 'lucide-react';
-import type { MapItem } from '@/components/editor/MapItemList';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -23,7 +22,6 @@ import { useAsphaltDetection } from '@/hooks/useAsphaltDetection';
 import type { CornerHandle, BoundingBox } from '@/types/overlay';
 import type { FeatureType, FeatureGeometry, PolygonGeometry } from '@/types/feature';
 import { DEFAULT_FEATURE_STYLE } from '@/types/feature';
-import { appendPolygonPart, isPolygonGeometry, removePolygonPart } from '@/lib/polygonParts';
 import mapboxgl from 'mapbox-gl';
 
 // Selection type for unified list
@@ -299,14 +297,31 @@ export default function TrackEditor() {
   // Handle drawing tool click
   const handleStartDrawing = useCallback((type: FeatureType) => {
     setEditingGeometryFeatureId(null);
-    // Keep a selected polygon layer selected so the new shape joins it
-    const keepSelection =
-      type === 'polygon' && featureContext.selectedFeature?.type === 'polygon';
-    if (!keepSelection) {
-      handleSelectItem(null, null);
-    }
+    handleSelectItem(null, null);
     featureDrawing.startDrawing(type);
-  }, [handleSelectItem, featureDrawing, featureContext.selectedFeature]);
+  }, [handleSelectItem, featureDrawing]);
+
+  // Layer (group) handlers
+  const handleAddGroup = useCallback(async () => {
+    await featureContext.createGroup();
+  }, [featureContext]);
+
+  const handleDeleteGroup = useCallback(async (groupId: string) => {
+    setEditingGeometryFeatureId(null);
+    handleSelectItem(null, null);
+    await featureContext.deleteGroup(groupId);
+  }, [featureContext, handleSelectItem]);
+
+  const handleToggleGroupVisibility = useCallback((groupId: string, hide: boolean) => {
+    const childIds = featureContext.features
+      .filter(f => f.groupId === groupId)
+      .map(f => f.id);
+    setHiddenFeatureIds(prev => {
+      const next = new Set(prev);
+      childIds.forEach(id => (hide ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  }, [featureContext.features]);
 
   // Handle creating new overlay
   const handleCreateOverlay = useCallback(async () => {
@@ -333,18 +348,6 @@ export default function TrackEditor() {
       overlayContext.deleteOverlay(id);
     }
   }, [featureContext, overlayContext, handleSelectItem]);
-
-  // Handle reorder from drag-and-drop
-  const handleReorderItems = useCallback((reorderedItems: MapItem[]) => {
-    reorderedItems.forEach((item, index) => {
-      const newZOrder = index + 1;
-      if (item.type === 'feature') {
-        featureContext.updateFeature(item.data.id, { zOrder: newZOrder });
-      } else {
-        overlayContext.updateOverlay(item.data.id, { zOrder: newZOrder });
-      }
-    });
-  }, [featureContext, overlayContext]);
 
   // Get current drawing instruction
   const drawingInstruction = featureDrawing.mode !== 'none' ? DRAWING_INSTRUCTIONS[featureDrawing.mode] : null;

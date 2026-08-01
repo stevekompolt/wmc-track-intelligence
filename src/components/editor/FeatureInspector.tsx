@@ -1,7 +1,7 @@
 // Feature Inspector component for editing feature properties
 
 import { useState, useEffect, useCallback } from 'react';
-import { Trash2, MapPin, Spline, Hexagon, Move, Eye, EyeOff, Plus, X } from 'lucide-react';
+import { Trash2, MapPin, Spline, Hexagon, Move, Eye, EyeOff } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { VenueFeature, FeatureStyle, FeatureStatus, IconKey } from '@/types/feature';
+import type { VenueFeature, FeatureStyle, FeatureStatus, IconKey, FeatureGroup } from '@/types/feature';
 import { FEATURE_COLORS, FEATURE_ICONS } from '@/types/feature';
 import { getPolygonParts, partVertexCount } from '@/lib/polygonParts';
 
@@ -17,6 +17,8 @@ interface FeatureInspectorProps {
   feature: VenueFeature | null;
   isEditingGeometry: boolean;
   isHidden?: boolean;
+  groups?: FeatureGroup[];
+  onMoveToGroup?: (groupId: string | null) => void;
   onToggleHidden?: () => void;
   onUpdateName: (name: string) => void;
   onUpdateDescription: (description: string) => void;
@@ -25,8 +27,6 @@ interface FeatureInspectorProps {
   onUpdateStatus: (status: FeatureStatus) => void;
   onStartEditingGeometry: () => void;
   onStopEditingGeometry: () => void;
-  onAddPart?: () => void;
-  onRemovePart?: (index: number) => void;
   onDelete: () => void;
 }
 
@@ -65,6 +65,8 @@ export function FeatureInspector({
   feature,
   isEditingGeometry,
   isHidden,
+  groups = [],
+  onMoveToGroup,
   onToggleHidden,
   onUpdateName,
   onUpdateDescription,
@@ -73,8 +75,6 @@ export function FeatureInspector({
   onUpdateStatus,
   onStartEditingGeometry,
   onStopEditingGeometry,
-  onAddPart,
-  onRemovePart,
   onDelete,
 }: FeatureInspectorProps) {
   const [localName, setLocalName] = useState('');
