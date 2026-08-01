@@ -50,7 +50,8 @@ export const createFeature = async (
   type: FeatureType,
   geometry: FeatureGeometry,
   style: FeatureStyle,
-  name?: string
+  name?: string,
+  groupId?: string | null
 ): Promise<VenueFeature> => {
   await new Promise(resolve => setTimeout(resolve, 100));
   
@@ -74,6 +75,7 @@ export const createFeature = async (
     visibleToOps: true,
     status: 'draft',
     zOrder: maxZOrder + 1,
+    groupId: groupId ?? null,
     createdAt: now,
     updatedAt: now,
   };
