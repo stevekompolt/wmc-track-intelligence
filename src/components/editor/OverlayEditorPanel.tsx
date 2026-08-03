@@ -13,7 +13,9 @@ import {
   Undo2,
   Layers,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Loader2,
+  FolderOpen
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +37,21 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 import { cn } from '@/lib/utils';
 import { SnapSourceSelector } from './SnapSourceSelector';
+import { MediaAssetBrowser } from './MediaAssetBrowser';
+import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
+import {
+  uploadOverlayImage,
+  validateOverlayFile,
+  findDuplicateAsset,
+} from '@/services/mediaAssetsApi';
 import type { MapOverlay, BoundingBox, OverlayStatus, SnapSource } from '@/types/overlay';
+
+export interface OverlayAssetSelection {
+  mediaAssetId: string;
+  s3Key?: string | null;
+  cdnUrl: string;
+}
 
 interface OverlayEditorPanelProps {
   overlay: MapOverlay | null;
@@ -48,7 +64,12 @@ interface OverlayEditorPanelProps {
   isPreviewingSnap?: boolean;
   onUpdateOverlay: (updates: Partial<MapOverlay>) => void;
   onUpdateBoundingBox: (box: Partial<BoundingBox>) => void;
-  onSetImageUrl: (url: string) => void;
+  /** Attach a permanent media-system asset reference to this overlay. */
+  onSetAsset: (asset: OverlayAssetSelection) => void;
+  /** Organization the overlay belongs to (recorded in media metadata). */
+  organizationId?: string;
+  /** Media asset ids already used by track overlays (media browser filter). */
+  trackOverlayAssetIds?: string[];
   onSetEditing: (editing: boolean) => void;
   onSetDragMode: (mode: 'none' | 'corners' | 'move') => void;
   onCenterOnVenue: () => void;
@@ -78,7 +99,9 @@ export function OverlayEditorPanel({
   isPreviewingSnap = false,
   onUpdateOverlay,
   onUpdateBoundingBox,
-  onSetImageUrl,
+  onSetAsset,
+  organizationId = 'WMC',
+  trackOverlayAssetIds = [],
   onSetEditing,
   onSetDragMode,
   onCenterOnVenue,
@@ -97,27 +120,70 @@ export function OverlayEditorPanel({
 }: OverlayEditorPanelProps) {
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
 
+  /**
+   * Overlay images are stored by the media system (Wasabi via
+   * media.worldmotoclash.com) using its existing presign -> PUT -> finalize
+   * pipeline. This app only records the returned media asset reference.
+   */
   const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    
-    // Validate file type - only PNG/JPEG supported by Mapbox
-    if (!file.type.match(/^image\/(png|jpeg|jpg)$/)) {
-      console.error('Only PNG and JPEG images are supported for map overlays');
+    e.target.value = '';
+    if (!file || !overlay) return;
+
+    const invalid = validateOverlayFile(file);
+    if (invalid) {
+      toast({ title: 'Unsupported image', description: invalid, variant: 'destructive' });
       return;
     }
-    
-    // Convert to data URL for reliable Mapbox rendering
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      onSetImageUrl(dataUrl);
-    };
-    reader.onerror = () => {
-      console.error('Failed to read image file');
-    };
-    reader.readAsDataURL(file);
+
+    setUploadProgress(1);
+    try {
+      const duplicate = await findDuplicateAsset(file);
+      if (duplicate) {
+        onSetAsset({
+          mediaAssetId: duplicate.id,
+          s3Key: duplicate.s3Key,
+          cdnUrl: duplicate.url,
+        });
+        toast({
+          title: 'Reused existing media',
+          description: `"${duplicate.title}" is already in the media library — referenced instead of re-uploaded.`,
+        });
+        return;
+      }
+
+      const uploaded = await uploadOverlayImage(
+        file,
+        {
+          assetType: 'track-overlay',
+          organizationId,
+          venueId: overlay.venueId,
+          overlayId: overlay.id,
+          overlayName: overlay.name || file.name,
+        },
+        setUploadProgress,
+      );
+
+      onSetAsset({
+        mediaAssetId: uploaded.mediaAssetId,
+        s3Key: uploaded.s3Key,
+        cdnUrl: uploaded.cdnUrl,
+      });
+      toast({ title: 'Overlay image uploaded', description: 'Stored in the WMC media library.' });
+    } catch (err) {
+      console.error('Overlay upload failed:', err);
+      toast({
+        title: 'Upload failed',
+        description: err instanceof Error ? err.message : 'Could not upload the overlay image.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadProgress(null);
+    }
   };
 
   const copyImageUrl = () => {
@@ -178,11 +244,11 @@ export function OverlayEditorPanel({
   return (
     <ScrollArea className="h-full">
       <div className="p-4 space-y-6">
-        {/* Warning: missing image with valid bounds */}
+        {/* Warning: overlay has bounds but no linked media asset */}
         {missingImage && (
           <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>Image data lost (storage limit). Please re-upload.</span>
+            <span>No media asset linked yet — upload or choose an image.</span>
           </div>
         )}
         {/* Header with status */}
@@ -219,7 +285,7 @@ export function OverlayEditorPanel({
               "hover:border-primary/50 transition-colors",
               overlay.imageUrl && "border-solid border-border"
             )}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => uploadProgress === null && fileInputRef.current?.click()}
           >
             {overlay.imageUrl ? (
               <img 
@@ -231,43 +297,76 @@ export function OverlayEditorPanel({
             <div className="text-center">
                 <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                 <p className="text-xs text-muted-foreground">
-                  Click to upload PNG or JPEG
+                  Click to upload PNG, JPEG or WebP
                 </p>
+              </div>
+            )}
+            {uploadProgress !== null && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/80 p-4">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <Progress value={uploadProgress} className="w-3/4" />
+                <p className="text-xs text-muted-foreground">Uploading to media library… {uploadProgress}%</p>
               </div>
             )}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/jpg"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
               className="hidden"
               onChange={handleImageUpload}
             />
           </div>
 
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={uploadProgress !== null || overlay.isLocked}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              {overlay.imageUrl ? 'Replace Image' : 'Upload New'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={uploadProgress !== null || overlay.isLocked}
+              onClick={() => setBrowserOpen(true)}
+            >
+              <FolderOpen className="h-4 w-4 mr-2" />
+              Choose Existing
+            </Button>
+          </div>
+
+          <MediaAssetBrowser
+            open={browserOpen}
+            onOpenChange={setBrowserOpen}
+            trackOverlayAssetIds={trackOverlayAssetIds}
+            onSelect={(asset) =>
+              onSetAsset({ mediaAssetId: asset.id, s3Key: asset.s3Key, cdnUrl: asset.url })
+            }
+          />
+
           {overlay.imageUrl && (
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="flex-1"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Replace Image
-              </Button>
-              <Button 
-                variant="outline" 
-                size="icon"
-                onClick={copyImageUrl}
-              >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={copyImageUrl}
+            >
+              {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+              Copy CDN URL
+            </Button>
           )}
 
-          {/* Image URL (read-only) */}
+          {/* Resolved media reference (read-only) */}
           {overlay.imageUrl && (
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Image URL</Label>
+              <Label className="text-xs text-muted-foreground">
+                Media asset {overlay.mediaAssetId ? `(${overlay.mediaAssetId.slice(0, 8)}…)` : ''}
+              </Label>
               <Input 
                 value={overlay.imageUrl} 
                 readOnly 

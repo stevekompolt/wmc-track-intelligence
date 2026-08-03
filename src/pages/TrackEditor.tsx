@@ -564,11 +564,14 @@ export default function TrackEditor() {
                   overlayContext.updateBoundingBox(overlayContext.selectedOverlay.id, box);
                 }
               }}
-              onSetImageUrl={(url) => {
+              onSetAsset={(asset) => {
                 if (overlayContext.selectedOverlay) {
-                  overlayContext.updateImageUrl(overlayContext.selectedOverlay.id, url);
+                  overlayContext.setOverlayAsset(overlayContext.selectedOverlay.id, asset);
                 }
               }}
+              trackOverlayAssetIds={overlayContext.overlays
+                .map((o) => o.mediaAssetId)
+                .filter((id): id is string => !!id)}
               onSetEditing={() => {}}
               onSetDragMode={setOverlayDragMode}
               onCenterOnVenue={handleCenterOnVenue}
