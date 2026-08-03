@@ -98,6 +98,8 @@ export function createDefaultOverlay(venueId: string): MapOverlay {
     venueId,
     name: 'New Overlay',
     description: '',
+    mediaAssetId: null,
+    s3Key: null,
     imageUrl: '',
     boundingBox: {
       north: 0,
