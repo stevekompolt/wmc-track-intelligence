@@ -45,6 +45,11 @@ interface OverlayContextType {
   updateDescription: (overlayId: string, description: string) => Promise<void>;
   updateBoundingBox: (overlayId: string, box: Partial<BoundingBox>) => Promise<void>;
   updateImageUrl: (overlayId: string, imageUrl: string) => Promise<void>;
+  // Attach a media-system asset (permanent reference) to an overlay
+  setOverlayAsset: (
+    overlayId: string,
+    asset: { mediaAssetId: string; s3Key?: string | null; cdnUrl: string },
+  ) => Promise<void>;
   updateOpacity: (overlayId: string, opacity: number) => Promise<void>;
   updateVisibility: (overlayId: string, visibility: { fans?: boolean; media?: boolean; ops?: boolean }) => Promise<void>;
   updateStatus: (overlayId: string, status: OverlayStatus) => Promise<void>;
@@ -240,6 +245,33 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     await updateOverlay(overlayId, { opacity });
   }, [updateOverlay]);
 
+  // Attach a media asset reference and auto-fit bounds to its aspect ratio
+  const setOverlayAsset = useCallback(async (
+    overlayId: string,
+    asset: { mediaAssetId: string; s3Key?: string | null; cdnUrl: string },
+  ) => {
+    const updates: Partial<MapOverlay> = {
+      mediaAssetId: asset.mediaAssetId,
+      s3Key: asset.s3Key ?? null,
+      imageUrl: asset.cdnUrl,
+    };
+
+    if (selectedTrack) {
+      try {
+        const aspectRatio = await getImageAspectRatio(asset.cdnUrl);
+        updates.boundingBox = calculateSnapBounds(
+          { lat: selectedTrack.latitude, lng: selectedTrack.longitude },
+          aspectRatio,
+          0.015,
+        );
+      } catch (err) {
+        console.error('Could not auto-fit overlay bounds:', err);
+      }
+    }
+
+    await updateOverlay(overlayId, updates);
+  }, [selectedTrack, updateOverlay]);
+
   const updateVisibility = useCallback(async (
     overlayId: string,
     visibility: { fans?: boolean; media?: boolean; ops?: boolean }
@@ -304,6 +336,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
         updateDescription,
         updateBoundingBox,
         updateImageUrl,
+        setOverlayAsset,
         updateOpacity,
         updateVisibility,
         updateStatus,
