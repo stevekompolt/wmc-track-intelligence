@@ -25,7 +25,13 @@ export interface MapOverlay {
   name: string;
   description?: string;
   
-  // Image
+  // Binary asset — owned by the media system (Wasabi). `mediaAssetId` is the
+  // permanent reference; `imageUrl` is the resolved CDN URL and is never
+  // persisted (no base64, no blob URLs).
+  mediaAssetId?: string | null;
+  s3Key?: string | null;
+  organizationId?: string | null;
+  eventId?: string | null;
   imageUrl: string;
   
   // Placement
@@ -38,6 +44,7 @@ export interface MapOverlay {
   targetViewpointId?: string;
   autoFitOnLoad: boolean;
   rotation: number; // 0-360 degrees
+  rotationDegrees?: number;
   
   // Visual
   opacity: number; // 0-1
